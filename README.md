@@ -1,48 +1,110 @@
-# OJ-Assistant
+<div align="center">
 
-![VSM Version](https://badgen.net/vs-marketplace/v/SparkleL.oj-assistant)
-![VSM Downloads](https://vsmarketplacebadge.apphb.com/downloads-short/SparkleL.oj-assistant.svg)
-![Deploy Workflow](https://img.shields.io/github/workflow/status/lss233/oj-assistant/Deploy%20Extension)
-![Dependabot](https://badgen.net/dependabot/lss233/oj-assistant?icon=dependabot)
+# 📖 OJ Assistant Plus
 
-谁不想要一个舒适的编程环境呢？
+**在 VS Code 里刷遍所有 OJ —— 看题、写题、测样例、交题，全程不离开编辑器。**
 
-## 特性
+[![Version](https://badgen.net/vs-marketplace/v/SparkleL.oj-assistant)](https://marketplace.visualstudio.com/items?itemName=SparkleL.oj-assistant)
+[![License](https://badgen.net/github/license/lss233/OJ-Assistant)](LICENSE)
+[![Platforms](https://badgen.net/badge/platforms/洛谷%20%7C%20力扣%20%7C%20NEU%20OJ%20%7C%20CSECG%20%7C%20Codeforces/blue)](#支持的平台)
 
-### 查看题目
+*基于 [lss233/OJ-Assistant](https://github.com/lss233/OJ-Assistant) 重构与大幅拓展*
 
-在配置文件中设置好正确的路径解析格式，当你打开一道题目时， VSCode 的左下方会显示题目的描述、样例和备注。    
-* 点击样例右方的 <kbd>Copy</kbd> 按钮，可以将样例输入复制到剪贴板。
-* 点击样例右方的 <kbd>Edit</kbd> 按钮，可以直接打开测试输入文件。  
+</div>
 
-![Show problem](https://image.mc9y.com/2021/01/24/c507ac4215896.gif)
+---
 
-### 测试输入
+## ✨ 特性一览
 
-提供 `ojassist.dataFile` 命令，搭配 VSCode 的调试功能可以自动输入数据。  
+| 功能 | 说明 |
+|---|---|
+| 🗂 **题库面板** | 活动栏一键打开，自动加载题目列表；CSECG 按**作业分组**，组名自带截止倒计时与 **补交中** 徽章 |
+| 📊 **完成状态** | 洛谷/力扣/NEU OJ 显示 `✓ 已AC`，CSECG 显示得分 `✓ 10.00分` 与提交日期 |
+| 📝 **题面侧栏** | 打开代码文件自动渲染题面、样例（Copy / Edit 一键操作） |
+| 🧮 **公式排版** | 内置 KaTeX（离线），`$...$` / `$$...$$` 数学公式完美呈现 |
+| ⬆️ **一键提交** | 面板快捷按钮或命令面板，提交后实时轮询评测结果 |
+| 🌐 **浏览器逃生口** | 面板按钮直达题目网页，插件出 bug 也不怕 |
+| 🖥️ **浏览器登录** | 一条命令拉起 Chrome/Edge，像平常一样登录，Cookie 自动保存 |
+| ⚙️ **GUI 初始化** | 点选平台卡片，一键生成配置 + Run Code 环境（`.in` 喂数据） |
 
-![Test data](https://image.mc9y.com/2021/01/24/5713b08795201.gif)  
+## 📌 支持的平台
 
-### 快速交题
+| backend | 平台 | 登录方式 | 状态 |
+|---|---|---|---|
+| `luogu` | [洛谷](https://www.luogu.com.cn) | 浏览器 Cookie（Turnstile 无法自动化） | ✅ 读题/搜题/提交全链路实测 |
+| `leetcode` | [力扣](https://leetcode.cn) | 账号密码 / Cookie，自动过 WAF | ✅ 读题/搜题实测 |
+| `neuoj` | [东北大学 OJ](https://oj.neu.edu.cn) | 浏览器登录（验证码自动弹图） | ✅ 登录协议/提交端点实测 |
+| `csecg` | NEU CSECG 作业平台 | 浏览器登录 | ✅ 全链路实测（搜题/看题/提交/状态/补交） |
+| `codeforces` | Codeforces | 账号密码 | 原版保留 |
+| `fjutacm` | FJUT ACM | 账号密码 | 原版保留 |
 
-1. 按下 <kbd>F1</kbd> 或 <kbd>Ctrl</kbd> + <kbd>Shift</kbd>+<kbd>P</kbd>, 输入 `submit` 查找 `OJ-Assist: Submit this code` 命令， 回车即可自动将代码提交到 OJ。
-2. 右下方将会提示代码的提交进度，以及评测结果。  
+## 🚀 快速开始
 
-![Submit code](https://image.mc9y.com/2021/01/24/f2e1d56d5f36b.gif)
+### 1. 安装
 
-## 安装及使用
+下载 `.vsix` 双击安装，或：
 
-当前版本的 OJ-Assistant 需要一些配置才能正常使用，  
-请移步至[这里](https://github.com/lss233/oj-assistant/wiki/getting-started)。
+```bash
+code --install-extension oj-assistant-<版本>.vsix
+```
 
-## TODOs
-- [ ] 代码通过时播放提示音
-- [ ] 比赛计时
-- [ ] 支持更多 OJ
+### 2. 初始化工作区
 
-## Issues & Contribution
+打开（或新建）一个刷题文件夹，`Ctrl+Shift+P` → **初始化刷题工作区** → 点选平台卡片。
+自动生成 `.ojassistconfig.json` 与 `.vscode/settings.json`（Run Code 自动从同名 `.in` 文件喂输入）。
 
-This project is under heavy development, every help will be appreciated.
+### 3. 浏览器登录
 
-## License
-This project is licensed under [MIT License](LICENSE).
+`Ctrl+Shift+P` → **Login via browser** → 在弹出的浏览器里正常登录即可，
+Cookie 自动写入配置并生效（浏览器配置持久化，之后一键刷新）。
+
+### 4. 开刷
+
+打开左侧 **OJ Assistant** 面板：
+
+```
+⬆️  提交当前题目
+🌐  在浏览器打开当前题目
+📁 第3次课后作业 〔截10-18·剩8天〕
+   1  实验4-1：华氏摄氏温度转换
+   9  整数求和
+📁 第1次课后作业 〔补交中·截10-04·已截止〕
+   1  实验1-3：计算三个数的平均值   09-22交 ✓ 10.00分
+```
+
+点击题目 → 自动生成代码文件并打开题面 → `Copy` 样例到 `.in` → 右键 **Run Code** 本地验证 → **Submit** 提交。
+
+## 🧩 配置示例
+
+```jsonc
+// .ojassistconfig.json（洛谷）
+{
+  "backend": "luogu",
+  "credentials": { "cookies": "_uid=...; __client_id=..." },
+  "pathParseRule": {
+    "normalProblem": "\/([A-Za-z]\d+)[\.\w]*\.(\w+)$"
+  }
+}
+```
+
+各平台完整示例见 [`examples/`](examples/) 目录；文件命名约定：
+
+- 洛谷 `P1001.cpp` · 力扣 `problems/two-sum.cpp` · NEU OJ `problems/1001.cpp`
+- CSECG `a/<作业ID>/<题号>.cpp`（直接用面板点击生成，无需手写）
+
+## 🔧 与原版的差异
+
+- 新增 **洛谷 / 力扣 / NEU OJ / CSECG** 四大平台后端（含完整逆向的登录与提交协议）
+- 题库浏览器（分组、倒计时、补交、完成状态）与 GUI 初始化向导
+- 浏览器登录自动化（puppeteer-core 驱动系统 Chrome/Edge，无内置浏览器下载）
+- KaTeX 离线公式渲染、Markdown 题面管线
+- 修复原版面板折叠不渲染、Copy/Edit 失效等交互问题
+- 构建链现代化（webpack 5 最新版、Node 24 兼容）
+
+## 🙏 致谢
+
+- [lss233/OJ-Assistant](https://github.com/lss233/OJ-Assistant) —— 原版作者与架构
+
+## 📄 License
+
+[MIT](LICENSE)

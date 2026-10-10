@@ -1,0 +1,20 @@
+{
+  "backend": "csecg",
+  "credentials": {
+    "username": "学号",
+    "password": "密码",
+    "token": ""
+  },
+  "pathParseRule": {
+    "contestProblem": "a[\\\\/](\\w+)[\\\\/](\\w+)[\\.\\w]*\\.(\\w+)$",
+    "normalProblem": "problems?[\\\\/](\\w+)[\\.\\w]*\\.(\\w+)$"
+  },
+  "endpoints": {
+    "problem": "POST /api/在此填写题目详情接口",
+    "problemBody": "{\"id\": \"{id}\", \"assignmentId\": \"{contestId}\"}",
+    "submit": "POST /api/在此填写提交接口",
+    "submitBody": "{\"assignmentId\": \"{contestId}\", \"problemId\": \"{id}\", \"language\": \"{lang}\", \"code\": \"{code}\"}",
+    "status": "POST /api/在此填写状态接口",
+    "statusBody": "{\"id\": \"{submissionId}\"}"
+  }
+}

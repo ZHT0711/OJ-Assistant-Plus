@@ -1,0 +1,11 @@
+{
+  "backend": "leetcode",
+  "credentials": {
+    "username": "你的力扣账号（手机号/邮箱/用户名）",
+    "password": "你的力扣密码"
+  },
+  "pathParseRule": {
+    "contestProblem": "c[\\\\/](\\d+)[\\\\/](\\w+)[\\.\\w]*\\.(\\w+)$",
+    "normalProblem": "\\/([a-z0-9]+(?:-[a-z0-9]+)+)[\\.\\w]*\\.(\\w+)$"
+  }
+}

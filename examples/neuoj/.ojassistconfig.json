@@ -1,0 +1,11 @@
+{
+  "backend": "neuoj",
+  "credentials": {
+    "username": "你的OJ用户名",
+    "password": "你的OJ密码"
+  },
+  "pathParseRule": {
+    "contestProblem": "c[\\\\/](\\d+)[\\\\/](\\w+)[\\.\\w]*\\.(\\w+)$",
+    "normalProblem": "problems?[\\\\/](\\d+)[\\.\\w]*\\.(\\w+)$"
+  }
+}

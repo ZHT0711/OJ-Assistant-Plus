@@ -17,6 +17,11 @@ export function activate(context: vscode.ExtensionContext) {
 	let debuggerTimer;
 	let problemInfoViewProvider: ProblemInfoViewProvider = new ProblemInfoViewProvider(context.extensionUri, () => ojServer, () => config);
 
+	// Commands and the problem browser register IMMEDIATELY - they read
+	// ojServer/config lazily, so a slow or failed login must not leave the
+	// palette/tree without handlers ("command not found").
+	registerCommands(context);
+
 	// Initialization
 	vscode.window.withProgress({
 		cancellable: false,
@@ -50,7 +55,6 @@ export function activate(context: vscode.ExtensionContext) {
 				)!
 			);
 		}
-		registerCommands(context);
 		console.log('OJ-Assistant: I\'m now alive.');
 
 	}, err => {
@@ -60,8 +64,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Automatically reload
 	context.subscriptions.push(
-		vscode.commands.registerTextEditorCommand('ojassist.reload', async (editor: vscode.TextEditor) => {
-			const configBuffer = await fs.readFile(path.join(vscode.workspace.getWorkspaceFolder(editor.document.uri)!.uri.fsPath, '.ojassistconfig.json'));
+		vscode.commands.registerCommand('ojassist.reload', async () => {
+			const folder = vscode.window.activeTextEditor
+				? vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)
+				: vscode.workspace.workspaceFolders?.[0];
+			if (!folder) {
+				vscode.window.showErrorMessage('OJ-Assistant: no workspace folder open.');
+				return;
+			}
+			const configBuffer = await fs.readFile(path.join(folder.uri.fsPath, '.ojassistconfig.json'));
 			config = JSON.parse(configBuffer.toString());
 			ojServer = new backends[config.backend](config);
 			await ojServer.login();

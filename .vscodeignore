@@ -2,9 +2,14 @@
 .vscode-test/**
 out/**
 src/**
+build/**
+node_modules/**
 .gitignore
 .yarnrc
+yarn.lock
 vsc-extension-quickstart.md
+test-weblogin.js
+smoke-test.js
 **/tsconfig.json
 **/.eslintrc.json
 **/*.map

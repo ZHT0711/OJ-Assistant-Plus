@@ -4,11 +4,11 @@
 	"description": "Solving OJ problems in your VSCode.",
 	"publisher": "SparkleL",
 	"preview": true,
-	"version": "0.0.6",
+	"version": "0.4.1",
 	"license": "SEE LICENSE IN LICENSE",
 	"icon": "assets/icon/512x512.png",
 	"engines": {
-		"vscode": "^1.52.0"
+		"vscode": "^1.53.0"
 	},
 	"categories": [
 		"Debuggers",
@@ -46,6 +46,12 @@
 					"id": "ojassistant.problemInfoView",
 					"name": "Problem Info"
 				}
+			],
+			"ojassistant": [
+				{
+					"id": "ojassistant.problems",
+					"name": "题库"
+				}
 			]
 		},
 		"commands": [
@@ -60,14 +66,69 @@
 			{
 				"command": "ojassist.reload",
 				"title": "OJ-Assist: Reload config"
+			},
+			{
+				"command": "ojassist.webLogin",
+				"title": "OJ-Assist: Login via browser (save cookies)"
+			},
+			{
+				"command": "ojassist.initWorkspace",
+				"title": "OJ-Assistant: 初始化刷题工作区 (GUI)"
+			},
+			{
+				"command": "ojassist.searchProblems",
+				"title": "搜索题目"
+			},
+			{
+				"command": "ojassist.refreshProblems",
+				"title": "刷新题库"
+			},
+			{
+				"command": "ojassist.loadMoreProblems",
+				"title": "OJ-Assistant: 题库加载更多"
+			},
+			{
+				"command": "ojassist.openProblem",
+				"title": "OJ-Assistant: 打开题目"
+			},
+			{
+				"command": "ojassist.quickSubmit",
+				"title": "OJ-Assist: ⬆️ Quick submit (current problem)"
+			},
+			{
+				"command": "ojassist.openProblemInBrowser",
+				"title": "OJ-Assist: 🌐 Open problem in browser"
 			}
-		]
+		],
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "ojassistant",
+					"title": "OJ Assistant",
+					"icon": "assets/icon/sidebar.svg"
+				}
+			]
+		},
+		"menus": {
+			"view/title": [
+				{
+					"command": "ojassist.searchProblems",
+					"when": "view == ojassistant.problems",
+					"group": "navigation@1"
+				},
+				{
+					"command": "ojassist.refreshProblems",
+					"when": "view == ojassistant.problems",
+					"group": "navigation@3"
+				}
+			]
+		}
 	},
 	"scripts": {
-		"vscode:prepublish": "yarn run package",
-		"compile": "webpack --config ./build/node-extension.webpack.config.js",
-		"watch": "webpack --watch --config ./build/node-extension.webpack.config.js",
-		"package": "webpack --mode production --devtool hidden-source-map --config ./build/node-extension.webpack.config.js",
+		"vscode:prepublish": "node scripts/copy-katex.js && yarn run package",
+		"compile": "node --openssl-legacy-provider ./node_modules/webpack/bin/webpack.js --config ./build/node-extension.webpack.config.js",
+		"watch": "node --openssl-legacy-provider ./node_modules/webpack/bin/webpack.js --watch --config ./build/node-extension.webpack.config.js",
+		"package": "node --openssl-legacy-provider ./node_modules/webpack/bin/webpack.js --mode production --devtool hidden-source-map --config ./build/node-extension.webpack.config.js",
 		"test-compile": "tsc -p ./",
 		"test-watch": "tsc -watch -p ./",
 		"pretest": "yarn run test-compile && yarn run lint",
@@ -87,8 +148,8 @@
 		"ts-loader": "^8.0.17",
 		"typescript": "^4.1.5",
 		"vscode-test": "^1.5.1",
-		"webpack": "^5.23.0",
-		"webpack-cli": "^4.5.0"
+		"webpack": "^5.99.0",
+		"webpack-cli": "^4.10.0"
 	},
 	"dependencies": {
 		"@3846masa/axios-cookiejar-support": "^1.0.1",
@@ -99,6 +160,7 @@
 		"axios": "^0.21.1",
 		"cheerio": "^1.0.0-rc.5",
 		"katex": "^0.12.0",
+		"puppeteer-core": "^25.13.0",
 		"qs": "^6.9.6",
 		"tough-cookie": "^4.0.0"
 	}

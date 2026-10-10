@@ -1,0 +1,10 @@
+{
+  "backend": "luogu",
+  "credentials": {
+    "cookies": "C3VK=...; __client_id=...; _uid=123456"
+  },
+  "pathParseRule": {
+    "contestProblem": "c[\\\\/](\\d+)[\\\\/](\\w+)[\\.\\w]*\\.(\\w+)$",
+    "normalProblem": "\\/([A-Za-z]\\d+)[\\.\\w]*\\.(\\w+)$"
+  }
+}

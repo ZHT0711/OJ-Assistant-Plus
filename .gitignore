@@ -4,3 +4,12 @@ node_modules
 .vscode-test/
 *.vsix
 yarn-error.log
+
+# build artifacts
+*.vsix
+out/
+dist/
+.yarn-mirror/
+smoke-test.js
+test-weblogin.js
+p3885.html
