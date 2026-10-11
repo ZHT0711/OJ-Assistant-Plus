@@ -93,6 +93,14 @@ function problemWebUrl(backend: string | undefined, info: { id: string; contestI
             return info.contestId
                 ? 'http://neucsecg.neu.edu.cn/assignment/programList.jsp?proNum=' + info.id + '&assignID=' + info.contestId
                 : 'http://neucsecg.neu.edu.cn/assignment/';
+        case 'hnucg':
+        case 'hnu-cg':
+            return info.contestId
+                ? 'https://cg.hnu.edu.cn/assignment/programList.jsp?proNum=' + info.id + '&assignID=' + info.contestId
+                : 'https://cg.hnu.edu.cn/assignment/';
+        case 'hnuacm':
+        case 'hnu-acm':
+            return 'http://acm.hnu.edu.cn/online/?action=problem&type=show&id=' + info.id;
         case 'codeforces': {
             if (info.contestId) {
                 return 'https://codeforces.com/problemset/problem/' + info.contestId + '/' + info.id;

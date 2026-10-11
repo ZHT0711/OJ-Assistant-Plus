@@ -66,6 +66,28 @@ const CARDS: PlatformCard[] = [
             endpoints: {},
         },
     },
+    {
+        backend: 'hnuacm', name: '湖南大学 ACM OJ', example: 'problems/10000.cpp',
+        desc: 'acm.hnu.edu.cn；可从 Edge 登录后保存 Cookie，题库无需验证码',
+        config: {
+            backend: 'hnuacm', credentials: {},
+            pathParseRule: {
+            contestProblem: 'c[\\\\/](\\d+)[\\\\/](\\w+)[\\.\\w]*\\.(\\w+)$',
+            normalProblem: 'problems?[\\\\/](\\d+)[\\.\\w]*\\.(\\w+)$',
+            },
+        },
+    },
+    {
+        backend: 'hnucg', name: '湖南大学 CourseGrading', example: 'a/作业ID/题号.cpp',
+        desc: 'cg.hnu.edu.cn；Edge 登录后保存 Cookie，图片验证码可在浏览器完成',
+        config: {
+            backend: 'hnucg', credentials: {}, baseUrl: 'https://cg.hnu.edu.cn',
+            pathParseRule: {
+            contestProblem: 'a[\\\\/](\\w+)[\\\\/](\\w+)[\\.\\w]*\\.(\\w+)$',
+            normalProblem: 'problems?[\\\\/]((?:(?!\\\\/).)+)[\\.\\w]*\\.(\\w+)$',
+            },
+        },
+    },
 ];
 
 const runnerSettings = {

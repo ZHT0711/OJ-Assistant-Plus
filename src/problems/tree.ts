@@ -249,6 +249,16 @@ export async function openProblemFile(entry: ProblemListEntry): Promise<void> {
             relative = path.join('a', String(entry.contestId ?? '0'), `${entry.id}.cpp`);
             template = cppTemplate;
             break;
+        case 'hnucg':
+        case 'hnu-cg':
+            relative = path.join('a', String(entry.contestId ?? '0'), `${entry.id}.cpp`);
+            template = cppTemplate;
+            break;
+        case 'hnuacm':
+        case 'hnu-acm':
+            relative = path.join('problems', `${entry.id}.cpp`);
+            template = cppTemplate;
+            break;
         default:
             // luogu: P1001.cpp in the workspace root; anything else keeps id as-is.
             relative = `${entry.id}.cpp`;

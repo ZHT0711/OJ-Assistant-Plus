@@ -104,6 +104,58 @@ const platforms: { [backend: string]: PlatformSpec } = {
             return body.length > 500;
         },
     },
+    hnuacm: {
+        loginUrl: 'http://acm.hnu.edu.cn/online/?action=form&type=login',
+        domainSuffix: 'acm.hnu.edu.cn',
+        // JSESSIONID exists for guests too; verify that the submit page no
+        // longer contains the legacy login form before saving it.
+        cookieCheck: c => !!c['JSESSIONID'],
+        probe: async cookie => {
+            const response = await axios.get('http://acm.hnu.edu.cn/online/?action=form&type=submitproblem', {
+                headers: { 'User-Agent': browserUA, 'Cookie': cookie, 'Accept': 'text/html' },
+                timeout: 20000,
+                validateStatus: () => true,
+            });
+            const body = String(response.data ?? '');
+            return response.status === 200 && !/Your Login Information|name=["']userid["']/i.test(body);
+        },
+    },
+    'hnu-acm': {
+        loginUrl: 'http://acm.hnu.edu.cn/online/?action=form&type=login',
+        domainSuffix: 'acm.hnu.edu.cn',
+        cookieCheck: c => !!c['JSESSIONID'],
+        probe: async cookie => {
+            const response = await axios.get('http://acm.hnu.edu.cn/online/?action=form&type=submitproblem', {
+                headers: { 'User-Agent': browserUA, 'Cookie': cookie, 'Accept': 'text/html' }, timeout: 20000, validateStatus: () => true,
+            });
+            return response.status === 200 && !/Your Login Information|name=["']userid["']/i.test(String(response.data ?? ''));
+        },
+    },
+    hnucg: {
+        loginUrl: 'https://cg.hnu.edu.cn/indexcs/simple.jsp?loginErr=0',
+        domainSuffix: 'cg.hnu.edu.cn',
+        cookieCheck: c => !!c['JSESSIONID'],
+        probe: async cookie => {
+            const response = await axios.get('https://cg.hnu.edu.cn/assignment/', {
+                headers: { 'User-Agent': browserUA, 'Cookie': cookie, 'Accept': 'text/html' },
+                timeout: 20000, maxRedirects: 0, validateStatus: () => true,
+            });
+            const body = String(response.data ?? '');
+            return response.status === 200 && body.length > 500;
+        },
+    },
+    'hnu-cg': {
+        loginUrl: 'https://cg.hnu.edu.cn/indexcs/simple.jsp?loginErr=0',
+        domainSuffix: 'cg.hnu.edu.cn',
+        cookieCheck: c => !!c['JSESSIONID'],
+        probe: async cookie => {
+            const response = await axios.get('https://cg.hnu.edu.cn/assignment/', {
+                headers: { 'User-Agent': browserUA, 'Cookie': cookie, 'Accept': 'text/html' },
+                timeout: 20000, maxRedirects: 0, validateStatus: () => true,
+            });
+            return response.status === 200 && String(response.data ?? '').length > 500;
+        },
+    },
 };
 
 function profileDir(backend: string): string {

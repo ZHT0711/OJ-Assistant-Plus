@@ -35,6 +35,8 @@
 | `leetcode` | [力扣](https://leetcode.cn) | 账号密码 / Cookie，自动过 WAF | ✅ 读题/搜题实测 |
 | `neuoj` | [东北大学 OJ](https://oj.neu.edu.cn) | 浏览器登录（验证码自动弹图） | ✅ 登录协议/提交端点实测 |
 | `csecg` | NEU CSECG 作业平台 | 浏览器登录 | ✅ 全链路实测（搜题/看题/提交/状态/补交） |
+| `hnuacm` | HNU ACM/ICPC OJ | Edge/Chrome Cookie or password | Problems, statements, submit, status |
+| `hnucg` | HNU CourseGrading | Edge/Chrome Cookie (image captcha in browser) | Assignments, statements, submit, status |
 | `codeforces` | Codeforces | 账号密码 | 原版保留 |
 | `fjutacm` | FJUT ACM | 账号密码 | 原版保留 |
 
