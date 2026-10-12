@@ -257,6 +257,15 @@ export class HDOJ implements OJ {
         return { problems, hasMore: vol < this.volumeCount };
     }
 
+    listLanguages(): Array<{ value: number; label: string }> {
+        return [
+            { value: 1, label: 'G++' }, { value: 2, label: 'GCC' },
+            { value: 3, label: 'C++' }, { value: 4, label: 'C' },
+            { value: 5, label: 'Pascal' }, { value: 6, label: 'Java' },
+            { value: 7, label: 'C#' },
+        ];
+    }
+
     // ----------------------------------------------------------------- submit
 
     /** Fetch the REAL submit form (after login) and learn its field names. */
@@ -299,7 +308,8 @@ export class HDOJ implements OJ {
         const pid = String(sourceFile.id);
         const spec = await this.fetchSubmitForm(pid);
 
-        const langId = (this.config.languages ?? defaultLanguages)[sourceFile.sourceType] ?? 1;
+        const langId = Number(sourceFile.languageOverride
+            ?? (this.config.languages ?? defaultLanguages)[sourceFile.sourceType] ?? 1);
         const body: { [k: string]: string } = Object.assign({}, spec.fields);
         if (spec.languageSelect) { body[spec.languageSelect] = String(langId); }
         body[spec.codeField] = sourceFile.code;

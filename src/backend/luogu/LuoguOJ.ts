@@ -259,6 +259,16 @@ export class LuoguOJ implements OJ {
     }
 
 
+    listLanguages(): Array<{ value: number; label: string }> {
+        return [
+            { value: 1, label: 'Pascal' }, { value: 2, label: 'C' },
+            { value: 3, label: 'C++98' }, { value: 4, label: 'C++11' },
+            { value: 7, label: 'Python3' }, { value: 8, label: 'Java8' },
+            { value: 9, label: 'Node.js' }, { value: 11, label: 'C++14' },
+            { value: 12, label: 'C++17' }, { value: 13, label: 'C++20' },
+        ];
+    }
+
     // ---------------------------------------------------------------- submit
 
     async submit(sourceFile: SourceFile): Promise<Function> {
@@ -279,7 +289,7 @@ export class LuoguOJ implements OJ {
             payload = await this.getProblemJson(pid);
         } catch { payload = undefined; }
         const acceptLanguages: number[] = payload?.data?.problem?.acceptLanguages ?? [];
-        const lang = this.pickLanguage(sourceFile.sourceType, acceptLanguages);
+        const lang = Number(sourceFile.languageOverride ?? this.pickLanguage(sourceFile.sourceType, acceptLanguages));
 
         const submitUrl = `${this.baseUrl}/fe/api/problem/submit/${pid}`;
         const config: AxiosRequestConfig = Object.assign({}, this.axiosConfig, {

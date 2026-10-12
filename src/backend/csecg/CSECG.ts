@@ -72,7 +72,7 @@ export class CSECG implements OJ {
     private problemIdCache: { [key: string]: string } = {};
     private languageOptions: Array<{ value: string; label: string }> = [];
     /** assignID -> { name, deadline, late } learned from list pages. */
-    private assignmentMeta: { [assignID: string]: { name?: string; deadline?: string; late?: boolean } } = {};
+    private assignmentMeta: { [assignID: string]: { name?: string; deadline?: string; late?: boolean; history?: boolean } } = {};
 
     private static readonly browserUA =
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -203,19 +203,27 @@ export class CSECG implements OJ {
 
     /** Parse an assignment page into (assignID, proNum, title) rows. */
     /** Sidebar: <a ...assignID=N> 名称 <span class="badge">补交中</span> </a> */
-    private parseSidebarAssignments(pageHtml: string): { [assignID: string]: { name: string; late: boolean } } {
+    private parseSidebarAssignments(pageHtml: string): { [assignID: string]: { name: string; late: boolean; history: boolean } } {
         const $ = cheerio.load(pageHtml);
-        const result: { [assignID: string]: { name: string; late: boolean } } = {};
-        // Only the sidebar links (index.jsp?courseID=&assignID=) - NOT the
-        // per-row 详细/judgeDetails links which also carry assignID=.
-        $('a[href*="index.jsp"][href*="assignID="]').each((i, el) => {
+        const result: { [assignID: string]: { name: string; late: boolean; history: boolean } } = {};
+        // Sidebar sections: <span>当前作业|历史作业</span> followed by a
+        // list-group of index.jsp links. Walk the sidebar in document order so
+        // every assignment knows whether it is history (已结束归档).
+        let currentSection = '';
+        $('.col-2 span.text-muted, .col-2 .list-group a[href*="index.jsp"][href*="assignID="]').each((i, el) => {
+            const tag = (el as any).tagName ?? '';
+            if (tag === 'span' || $(el).hasClass('text-muted')) {
+                const heading = $(el).text();
+                currentSection = heading.includes('历史') ? 'history' : (heading.includes('当前') ? 'current' : currentSection);
+                return;
+            }
             const href = $(el).attr('href') ?? '';
             const m = href.match(new RegExp('assignID=(' + BS + 'd+)'));
             if (!m) { return; }
             const badge = $(el).find('.badge').text();
             const name = $(el).clone().children().remove().end().text().trim();
             if (name) {
-                result[m[1]] = { name, late: /补交/.test(badge) };
+                result[m[1]] = { name, late: /补交/.test(badge), history: currentSection === 'history' };
             }
         });
         return result;
@@ -303,7 +311,7 @@ export class CSECG implements OJ {
 
         let fetched = 0;
         for (const href of Array.from(assignmentUrls)) {
-            if (fetched >= 5) { break; }
+            if (fetched >= 10) { break; }
             const url = href.startsWith('http') ? href : this.baseUrl + '/assignment/' + href.replace(new RegExp('^.*/assignment/'), '');
             try {
                 const pageHtml = await this.fetchHtml(url);
@@ -322,11 +330,13 @@ export class CSECG implements OJ {
             if (meta) {
                 p.assignmentName = meta.name;
                 p.late = meta.late;
+                p.history = meta.history;
             }
             this.assignmentMeta[p.assignID] = {
                 name: p.assignmentName ?? this.assignmentMeta[p.assignID]?.name,
                 deadline: p.deadline ?? this.assignmentMeta[p.assignID]?.deadline,
                 late: p.late ?? this.assignmentMeta[p.assignID]?.late,
+                history: p.history ?? this.assignmentMeta[p.assignID]?.history,
             };
         }
 
@@ -346,6 +356,7 @@ export class CSECG implements OJ {
                 deadline: p.deadline,
                 assignmentName: p.assignmentName,
                 late: p.late,
+                history: p.history,
             })),
             hasMore: start + pageSize < matched.length,
         };
@@ -439,6 +450,15 @@ export class CSECG implements OJ {
         });
     }
 
+    listLanguages(): Array<{ value: string; label: string }> {
+        if (this.languageOptions.length > 0) { return this.languageOptions.slice(); }
+        return [
+            { value: 'c', label: 'C' }, { value: 'c++', label: 'C++' },
+            { value: 'java', label: 'JAVA' }, { value: 'python', label: 'PYTHON' },
+            { value: 'c#', label: 'C#' },
+        ];
+    }
+
     // ----------------------------------------------------------------- submit
 
     async submit(sourceFile: SourceFile): Promise<Function> {
@@ -455,7 +475,7 @@ export class CSECG implements OJ {
             throw new Error('OJ-Assistant: csecg problemID not found for assignment ' + assignID + ' problem ' + proNum + '.');
         }
 
-        const lang = (this.config.languages ?? defaultLanguages)[sourceFile.sourceType] ?? 'c++';
+        const lang = String(sourceFile.languageOverride ?? (this.config.languages ?? defaultLanguages)[sourceFile.sourceType] ?? 'c++');
         const response = await axios.post(
             this.baseUrl + '/assignment/showProcessMsg.jsp',
             qstringify({
@@ -549,4 +569,5 @@ interface AssignmentProblem {
     deadline?: string;
     assignmentName?: string;
     late?: boolean;
+    history?: boolean;
 }

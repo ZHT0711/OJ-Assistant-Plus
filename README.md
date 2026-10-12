@@ -4,8 +4,8 @@
 
 **在 VS Code 里刷遍所有 OJ —— 看题、写题、测样例、交题，全程不离开编辑器。**
 
-[![Version](https://badgen.net/vs-marketplace/v/SparkleL.oj-assistant)](https://marketplace.visualstudio.com/items?itemName=SparkleL.oj-assistant)
-[![License](https://badgen.net/github/license/lss233/OJ-Assistant)](LICENSE)
+[![Version](https://badgen.net/vs-marketplace/v/ZHT0711.oj-assistant-plus)](https://marketplace.visualstudio.com/items?itemName=SparkleL.oj-assistant)
+[![License](https://badgen.net/github/license/ZHT0711/OJ-Assistant-Plus)](LICENSE)
 [![Platforms](https://badgen.net/badge/platforms/洛谷%20%7C%20力扣%20%7C%20NEU%20OJ%20%7C%20CSECG%20%7C%20Codeforces/blue)](#支持的平台)
 
 *基于 [lss233/OJ-Assistant](https://github.com/lss233/OJ-Assistant) 重构与大幅拓展*
@@ -22,7 +22,7 @@
 | 📊 **完成状态** | 洛谷/力扣/NEU OJ 显示 `✓ 已AC`，CSECG 显示得分 `✓ 10.00分` 与提交日期 |
 | 📝 **题面侧栏** | 打开代码文件自动渲染题面、样例（Copy / Edit 一键操作） |
 | 🧮 **公式排版** | 内置 KaTeX（离线），`$...$` / `$$...$$` 数学公式完美呈现 |
-| ⬆️ **一键提交** | 面板快捷按钮或命令面板，提交后实时轮询评测结果 |
+| ⬆️ **一键提交** | 提交前弹出**语言选择**（记忆上次选择），结果通知附带 ⏱ 运行时间与 💾 内存 |
 | 🌐 **浏览器逃生口** | 面板按钮直达题目网页，插件出 bug 也不怕 |
 | 🖥️ **浏览器登录** | 一条命令拉起 Chrome/Edge，像平常一样登录，Cookie 自动保存 |
 | ⚙️ **GUI 初始化** | 点选平台卡片，一键生成配置 + Run Code 环境（`.in` 喂数据） |
@@ -112,6 +112,20 @@ Cookie 自动写入配置并生效（浏览器配置持久化，之后一键刷�
 - KaTeX 离线公式渲染、Markdown 题面管线
 - 修复原版面板折叠不渲染、Copy/Edit 失效等交互问题
 - 构建链现代化（webpack 5 最新版、Node 24 兼容）
+
+## 📦 发布到 VS Code Marketplace
+
+1. 在 [marketplace 管理后台](https://marketplace.visualstudio.com/manage) 用微软账号注册发布者 ID `ZHT0711`（一次性）
+2. 本地生成 PAT（`Marketplace: Publish` 权限）并安装 vsce：
+   ```bash
+   npm i -g @vscode/vsce
+   ```
+3. 打包并发布：
+   ```bash
+   yarn run package
+   vsce package --no-dependencies          # 产出 oj-assistant-plus-<版本>.vsix
+   vsce publish                            # 首次会要求登录发布者账号 / 或用 --pat <token>
+   ```
 
 ## 🙏 致谢
 

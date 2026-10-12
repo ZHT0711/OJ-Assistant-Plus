@@ -171,7 +171,7 @@ export class ProblemTreeProvider implements vscode.TreeDataProvider<ProblemNode>
                 : vscode.TreeItemCollapsibleState.None);
         if (node.kind === 'group') {
             item.id = 'g:' + node.groupId;
-            item.iconPath = new vscode.ThemeIcon('folder');
+            item.iconPath = new vscode.ThemeIcon(node.groupId && this.entries.some(e => String(e.contestId) === node.groupId && e.history) ? 'history' : 'folder');
             item.contextValue = 'assignmentGroup';
             return item;
         }
@@ -318,6 +318,7 @@ function countdown(deadline: string): string {
 function formatGroupLabel(meta: ProblemListEntry, count: number): string {
     const name = meta.assignmentName ?? ('作业 ' + meta.contestId);
     const parts: string[] = [];
+    if (meta.history) { parts.push('历史'); }
     if (meta.late) { parts.push('补交中'); }
     if (meta.deadline) {
         parts.push('截' + shortDate(meta.deadline) + countdown(meta.deadline));

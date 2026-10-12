@@ -37,6 +37,14 @@ class CodeforcesConfiguration implements Configuration {
     constructor(public credentials: SimpleUserPasswordCredential) { }
 }
 export class CodeforcesOJ implements OJ {
+    listLanguages(): Array<{ value: number; label: string }> {
+        const seen = new Map<number, string>();
+        for (const [ext, id] of Object.entries(languageMap)) {
+            if (!seen.has(id)) { seen.set(id, ext.toUpperCase()); }
+        }
+        return Array.from(seen, ([value, name]) => ({ value, label: name + ' (' + value + ')' }));
+    }
+
     readonly baseUrl = this.config.baseUrl as string ?? 'https://codeforces.com';
 
     user!: CodeforcesUser;
@@ -89,7 +97,7 @@ export class CodeforcesOJ implements OJ {
             await axios.post(this.baseUrl + `/contest/${sourceFile.contestId}/submit`, {
                 ...{
                     submittedProblemCode: sourceFile.id,
-                    programTypeId: getLanguageId(sourceFile.sourceType),
+                    programTypeId: (sourceFile.languageOverride as number) ?? getLanguageId(sourceFile.sourceType),
                     source: sourceFile.code,
                     action: 'submitSolutionFormSubmitted',
                     submittedProblemIndex: sourceFile.id,
@@ -103,7 +111,7 @@ export class CodeforcesOJ implements OJ {
             await axios.post(this.baseUrl + '/problemset/submit', {
                 ...{
                     submittedProblemCode: sourceFile.id,
-                    language: getLanguageId(sourceFile.sourceType),
+                    language: (sourceFile.languageOverride as number) ?? getLanguageId(sourceFile.sourceType),
                     source: sourceFile.code,
                     action: 'submitSolutionFormSubmitted',
                 },

@@ -28,6 +28,13 @@ export class HNUACMOJ implements OJ {
 
     constructor(private config: HNUACMConfiguration) { }
 
+    listLanguages(): Array<{ value: number; label: string }> {
+        return [
+            { value: 0, label: 'C' }, { value: 1, label: 'C++' },
+            { value: 2, label: 'Java' }, { value: 3, label: 'Pascal' },
+        ];
+    }
+
     async login(): Promise<HNUACMUser> {
         this.cookieJar = new CookieJar();
         this.axiosConfig = {
@@ -168,7 +175,7 @@ export class HNUACMOJ implements OJ {
         // the stable legacy name as well keeps hand-written/custom forms
         // compatible without changing the visible form fields.
         body.problemid = sourceFile.id;
-        const language = languageMap[sourceFile.sourceType.toLowerCase()] ?? 1;
+        const language = Number(sourceFile.languageOverride ?? languageMap[sourceFile.sourceType.toLowerCase()] ?? 1);
         const select = form.find('select[name]').first();
         if (select.length) { body[select.attr('name')!] = String(language); }
         else { body.language = language; }

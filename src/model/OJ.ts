@@ -19,6 +19,8 @@ export interface ProblemListEntry {
     assignmentName?: string;
     /** CSECG: the assignment is in its late-submission window (补交中). */
     late?: boolean;
+    /** CSECG: assignment comes from the 历史作业 archive section. */
+    history?: boolean;
 }
 
 export interface ProblemListPage {
@@ -53,4 +55,10 @@ export interface OJ {
      * @param page 1-based page number
      */
     searchProblems?(keyword: string, page: number): Promise<ProblemListPage>;
+
+    /**
+     * Optional: languages the platform accepts, for the submit-time picker.
+     * `value` goes into SourceFile.languageOverride, `label` is shown to the user.
+     */
+    listLanguages?(): Array<{ value: string | number; label: string }>;
 }

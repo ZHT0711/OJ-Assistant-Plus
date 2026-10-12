@@ -348,6 +348,18 @@ export class LeetCodeOJ implements OJ {
     }
 
 
+    listLanguages(): Array<{ value: string; label: string }> {
+        return [
+            { value: 'cpp', label: 'C++' }, { value: 'c', label: 'C' },
+            { value: 'java', label: 'Java' }, { value: 'python3', label: 'Python3' },
+            { value: 'javascript', label: 'JavaScript' }, { value: 'typescript', label: 'TypeScript' },
+            { value: 'golang', label: 'Go' }, { value: 'csharp', label: 'C#' },
+            { value: 'kotlin', label: 'Kotlin' }, { value: 'swift', label: 'Swift' },
+            { value: 'rust', label: 'Rust' }, { value: 'ruby', label: 'Ruby' },
+            { value: 'php', label: 'PHP' }, { value: 'scala', label: 'Scala' },
+        ];
+    }
+
     // ---------------------------------------------------------------- submit
 
     async submit(sourceFile: SourceFile): Promise<Function> {
@@ -358,7 +370,7 @@ export class LeetCodeOJ implements OJ {
             await this.getProblem({ id: slug, contestId: sourceFile.contestId });
         }
         const questionId = this.questionIds[slug];
-        const lang = (this.config.languages ?? defaultLanguages)[sourceFile.sourceType] ?? sourceFile.sourceType;
+        const lang = String(sourceFile.languageOverride ?? (this.config.languages ?? defaultLanguages)[sourceFile.sourceType] ?? sourceFile.sourceType);
 
         const csrf = this.cookieValue('csrftoken');
         const response = await this.request('post', `${this.baseUrl}/problems/${slug}/submit/`, {

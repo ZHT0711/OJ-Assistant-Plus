@@ -2,6 +2,9 @@ import * as vscode from 'vscode';
 import { config, ojServer } from '../extension';
 import { parseSourceFile } from '../utils';
 
+/** Last language chosen in this session (preselected next time). */
+let lastPickedLanguage: string | number | undefined;
+
 export default vscode.commands.registerTextEditorCommand('ojassist.submit', async (editor: vscode.TextEditor) => {
     vscode.window.withProgress({
         cancellable: false,
@@ -18,6 +21,29 @@ export default vscode.commands.registerTextEditorCommand('ojassist.submit', asyn
                 vscode.window.showErrorMessage(`OJ-Assistant: This is not a valid source code.`);
                 resolve();
                 return null;
+            }
+            // Multi-language support: ask which language to submit as.
+            if ((config as any)?.askLanguage !== false && typeof ojServer?.listLanguages === 'function') {
+                const languages = ojServer.listLanguages!();
+                if (languages.length > 1) {
+                    const configured = (config as any)?.languages?.[sourceFile.sourceType];
+                    const remembered = lastPickedLanguage ?? configured;
+                    const items = languages.map(l => ({
+                        label: l.label,
+                        detail: remembered !== undefined && String(l.value) === String(remembered) ? '✓ 默认' : undefined,
+                        value: l.value,
+                    }));
+                    const picked = await vscode.window.showQuickPick(items, {
+                        placeHolder: `选择提交语言（当前文件按扩展名推断: ${sourceFile.sourceType}）`,
+                        matchOnDetail: true,
+                    }) as { label: string; detail?: string; value: string | number } | undefined;
+                    if (picked === undefined) {
+                        resolve();
+                        return null; // user cancelled
+                    }
+                    sourceFile.languageOverride = picked.value;
+                    lastPickedLanguage = picked.value;
+                }
             }
             progress.report({
                 increment: 10,
@@ -44,10 +70,15 @@ export default vscode.commands.registerTextEditorCommand('ojassist.submit', asyn
                         if (!pendingJudgement) { return; }
                         pendingJudgement = false;
                         resolve();
+                        const perf: string[] = [];
+                        if (submit.time && submit.time !== '-') { perf.push('⏱ ' + submit.time); }
+                        if (submit.memory && submit.memory !== '-') { perf.push('💾 ' + submit.memory); }
+                        const perfText = perf.length > 0 ? '  ' + perf.join('  ') : '';
+                        const message = `OJ-Assistant: Problem#${sourceFile?.id} Result: ${submit.result}!${perfText}`;
                         if (submit.result !== 'Accepted') {
-                            vscode.window.showErrorMessage(`OJ-Assistant: Problem#${sourceFile?.id} Result: ${submit.result}!`);
+                            vscode.window.showErrorMessage(message);
                         } else {
-                            vscode.window.showInformationMessage(`OJ-Assistant: Problem#${sourceFile?.id} Result: ${submit.result}!`);
+                            vscode.window.showInformationMessage(message);
                         }
                     }
                 }

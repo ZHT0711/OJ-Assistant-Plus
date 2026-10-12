@@ -1,10 +1,10 @@
 {
-	"name": "oj-assistant",
-	"displayName": "OJ Assistant",
-	"description": "Solving OJ problems in your VSCode.",
-	"publisher": "SparkleL",
-	"preview": true,
-	"version": "0.5.0",
+	"name": "oj-assistant-plus",
+	"displayName": "OJ Assistant Plus",
+	"description": "在 VS Code 里刷遍所有 OJ：洛谷 / 力扣 / NEU OJ / CSECG / HDOJ / Codeforces - 看题、测样例、一键交题",
+	"publisher": "ZHT0711",
+	"preview": false,
+	"version": "0.6.0",
 	"license": "SEE LICENSE IN LICENSE",
 	"icon": "assets/icon/512x512.png",
 	"engines": {
@@ -18,7 +18,8 @@
 		"workspaceContains:.ojassistconfig.json"
 	],
 	"repository": {
-		"url": "https://github.com/lss233/oj-assistant"
+		"type": "git",
+		"url": "https://github.com/ZHT0711/OJ-Assistant-Plus"
 	},
 	"badges": [
 		{

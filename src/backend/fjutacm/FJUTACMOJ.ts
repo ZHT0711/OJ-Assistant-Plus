@@ -26,6 +26,10 @@ class FJUTACMConfiguration implements Configuration {
     constructor(public credentials: SimpleUserPasswordCredential) { }
 }
 export class FJUTACMOJ implements OJ {
+    listLanguages(): Array<{ value: number; label: string }> {
+        return [{ value: 0, label: 'C / C++' }, { value: 2, label: 'Java' }];
+    }
+
     readonly baseUrl = this.config.baseUrl as string ?? 'http://www.fjutacm.com';
 
     user!: FJUTACMUser;
@@ -80,7 +84,7 @@ export class FJUTACMOJ implements OJ {
         await axios.post(this.baseUrl + '/sb.action', qstringify({
             cid: sourceFile.contestId ?? -1,
             pid: sourceFile.id,
-            language: getLanguageId(sourceFile.sourceType),
+            language: sourceFile.languageOverride ?? getLanguageId(sourceFile.sourceType),
             code: sourceFile.code
         }), this.axiosConfig);
         let resolveSubmitResult = (data: string, resolve: (value: unknown) => void) => {
@@ -101,7 +105,7 @@ export class FJUTACMOJ implements OJ {
             return () => {
                 return new Promise(resolve => {
                     axios.get(this.baseUrl +
-                        `/module/contestNew/status.jsp?user=${this.user.user}&pid=${sourceFile.id}&result=-1&lang=${getLanguageId(sourceFile.sourceType)}&cid=${sourceFile.contestId}&page=1`,
+                        `/module/contestNew/status.jsp?user=${this.user.user}&pid=${sourceFile.id}&result=-1&lang=${sourceFile.languageOverride ?? getLanguageId(sourceFile.sourceType)}&cid=${sourceFile.contestId}&page=1`,
                         this.axiosConfig)
                         .then(response => {
                             resolveSubmitResult(response.data, resolve);
@@ -112,7 +116,7 @@ export class FJUTACMOJ implements OJ {
             return () => {
                 return new Promise(resolve => {
                     axios.get(this.baseUrl +
-                        `/Status.jsp?all=1&user=${this.user.user}&pid=${sourceFile.id}&lang=${getLanguageId(sourceFile.sourceType)}`,
+                        `/Status.jsp?all=1&user=${this.user.user}&pid=${sourceFile.id}&lang=${sourceFile.languageOverride ?? getLanguageId(sourceFile.sourceType)}`,
                         this.axiosConfig)
                         .then(response => {
                             resolveSubmitResult(response.data, resolve);

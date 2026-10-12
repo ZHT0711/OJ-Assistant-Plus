@@ -343,6 +343,11 @@ export class NEUOJ implements OJ {
     }
 
 
+    listLanguages(): Array<{ value: number | string; label: string }> {
+        return Object.entries((this.config.languages ?? defaultLanguageMap) as { [k: string]: number })
+            .map(([ext, value]) => ({ value, label: ext.toUpperCase() + ' (' + value + ')' }));
+    }
+
     // ---------------------------------------------------------------- submit
 
     async submit(sourceFile: SourceFile): Promise<Function> {
@@ -390,7 +395,7 @@ export class NEUOJ implements OJ {
      *   3. a conventional default ({problem_id, language_id, code}).
      */
     private buildSubmitBody(sourceFile: SourceFile, page: ProblemPageInfo): any {
-        const langId = this.resolveLanguageId(sourceFile.sourceType, page);
+        const langId = sourceFile.languageOverride ?? this.resolveLanguageId(sourceFile.sourceType, page);
 
         if (this.config.submitBody && typeof this.config.submitBody === 'string') {
             return JSON.parse(
@@ -488,11 +493,11 @@ export class NEUOJ implements OJ {
         submitResult.id = Number(id) || 0;
         submitResult.pid = sourceFile.id;
         submitResult.user = this.user?.user ?? '-';
-        submitResult.lang = sourceFile.sourceType;
+        submitResult.lang = String(sourceFile.languageOverride ?? sourceFile.sourceType);
         submitResult.date = new Date();
         submitResult.codelen = sourceFile.code.length;
-        submitResult.time = '-';
-        submitResult.memory = '-';
+        submitResult.time = String(response.data?.time ?? response.data?.exec_time ?? response.data?.real_time ?? '-');
+        submitResult.memory = String(response.data?.memory ?? response.data?.mem ?? '-');
         submitResult.result = this.mapVerdict(raw);
         return submitResult;
     }

@@ -38,6 +38,8 @@ export class SourceFile implements ProblemInfo {
         public sourceType: string,
         public code: string,
         public uri: vscode.Uri,
+        /** Language chosen by the submit-time picker (overrides auto-map). */
+        public languageOverride?: string | number,
     ) { }
 
     public get dataInputFile(): vscode.Uri {
