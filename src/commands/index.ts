@@ -6,8 +6,10 @@ import DataFile from './dataFile';
 import WebLogin from './webLogin';
 import InitWorkspace from './initWorkspace';
 import { ProblemTreeProvider, ProblemNode, openProblemFile } from '../problems/tree';
+import * as path from 'path';
 import { parseSourceFile } from '../utils';
-import { config } from '../extension';
+import { getPreferredLanguage, setPreferredLanguage } from '../utils/languageState';
+import { config, ojServer } from '../extension';
 
 const commands: Array<vscode.Disposable> = [Submit, Data, DataFile, WebLogin, InitWorkspace];
 
@@ -50,6 +52,27 @@ export function registerCommands(context: vscode.ExtensionContext) {
         await treeProvider.search(keyword);
     }), 'ojassist.searchProblems');
     safePush(context, () => vscode.commands.registerCommand('ojassist.refreshProblems', () => treeProvider.reload()), 'ojassist.refreshProblems');
+    safePush(context, () => vscode.commands.registerCommand('ojassist.pickLanguage', async () => {
+        if (typeof ojServer?.listLanguages !== 'function') {
+            vscode.window.showWarningMessage('OJ-Assistant: 当前平台还没有可选语言列表。');
+            return;
+        }
+        const languages = ojServer.listLanguages!();
+        if (languages.length === 0) { return; }
+        const current = getPreferredLanguage();
+        const items = languages.map((l: { value: string | number; label: string }) => ({
+            label: (current && String(current.value) === String(l.value) ? '$(check) ' : '') + l.label,
+            value: l.value,
+            rawLabel: l.label,
+        }));
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: '选择本次做题使用的语言（影响生成文件的扩展名与提交语言）',
+        }) as { value: string | number; rawLabel: string } | undefined;
+        if (!picked) { return; }
+        setPreferredLanguage({ value: picked.value, label: picked.rawLabel });
+        await persistPreferredLanguage(picked.value);
+        treeProvider.refresh();
+    }), 'ojassist.pickLanguage');
     safePush(context, () => vscode.commands.registerCommand('ojassist.loadMoreProblems', () => treeProvider.loadMore()), 'ojassist.loadMoreProblems');
 
     // Pinned panel action: submit the problem of the file currently focused.
@@ -76,6 +99,24 @@ export function registerCommands(context: vscode.ExtensionContext) {
         }
         await vscode.env.openExternal(vscode.Uri.parse(url));
     }), 'ojassist.openProblemInBrowser');
+}
+
+/** Persist the language choice into .ojassistconfig.json (preferredLanguage). */
+async function persistPreferredLanguage(value: string | number): Promise<void> {
+    try {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        if (!folder) { return; }
+        const file = path.join(folder.uri.fsPath, '.ojassistconfig.json');
+        const { promises: fsp } = require('fs');
+        const raw = await fsp.readFile(file, 'utf8');
+        const indentMatch = raw.match(/^[ 	]+/m);
+        const indent = indentMatch ? indentMatch[0].slice(0, 10) : '  ';
+        const cfg = JSON.parse(raw);
+        cfg.preferredLanguage = value;
+        await fsp.writeFile(file, JSON.stringify(cfg, null, indent) + '\n', 'utf8');
+    } catch (err) {
+        console.error('OJ-Assistant: failed to persist preferredLanguage', err);
+    }
 }
 
 /** Platform -> web page URL for a problem (fallback escape hatch). */

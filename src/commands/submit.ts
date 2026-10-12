@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { config, ojServer } from '../extension';
 import { parseSourceFile } from '../utils';
+import { getPreferredLanguage, setPreferredLanguage } from '../utils/languageState';
 
 /** Last language chosen in this session (preselected next time). */
 let lastPickedLanguage: string | number | undefined;
@@ -23,7 +24,11 @@ export default vscode.commands.registerTextEditorCommand('ojassist.submit', asyn
                 return null;
             }
             // Multi-language support: ask which language to submit as.
-            if ((config as any)?.askLanguage !== false && typeof ojServer?.listLanguages === 'function') {
+            const panelChoice = getPreferredLanguage();
+            if (panelChoice) {
+                // Chosen in the panel before coding - trust it, no picker.
+                sourceFile.languageOverride = panelChoice.value;
+            } else if ((config as any)?.askLanguage !== false && typeof ojServer?.listLanguages === 'function') {
                 const languages = ojServer.listLanguages!();
                 if (languages.length > 1) {
                     const configured = (config as any)?.languages?.[sourceFile.sourceType];
@@ -43,6 +48,7 @@ export default vscode.commands.registerTextEditorCommand('ojassist.submit', asyn
                     }
                     sourceFile.languageOverride = picked.value;
                     lastPickedLanguage = picked.value;
+                    setPreferredLanguage({ value: picked.value, label: picked.label });
                 }
             }
             progress.report({

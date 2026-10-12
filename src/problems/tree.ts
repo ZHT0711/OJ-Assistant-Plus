@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import { ojServer, config } from '../extension';
+import { getPreferredLanguage, languageFileExt } from '../utils/languageState';
 import { ProblemListEntry } from '../model';
 
 /** Node of the problem browser tree. */
@@ -10,7 +11,7 @@ export class ProblemNode {
         public readonly label: string,
         public readonly difficulty: string | undefined,
         public readonly entry?: ProblemListEntry,
-        public readonly kind?: 'hint' | 'loading' | 'more' | 'action-submit' | 'action-browser' | 'group',
+        public readonly kind?: 'hint' | 'loading' | 'more' | 'action-submit' | 'action-browser' | 'action-language' | 'group',
         /** For 'group' nodes: the assignment id whose problems it contains. */
         public readonly groupId?: string,
     ) { }
@@ -111,6 +112,7 @@ export class ProblemTreeProvider implements vscode.TreeDataProvider<ProblemNode>
             // Quick actions stay visible even here - the browser button is
             // exactly the escape hatch needed when loading fails.
             return [
+                new ProblemNode(formatLanguageLabel(), undefined, undefined, 'action-language'),
                 new ProblemNode('⬆️  提交当前题目', undefined, undefined, 'action-submit'),
                 new ProblemNode('🌐  在浏览器打开当前题目', undefined, undefined, 'action-browser'),
                 new ProblemNode(hint, undefined, undefined, 'hint'),
@@ -118,6 +120,7 @@ export class ProblemTreeProvider implements vscode.TreeDataProvider<ProblemNode>
         }
         const nodes: ProblemNode[] = [
             // Pinned quick actions (no command arguments - see getTreeItem).
+            new ProblemNode(formatLanguageLabel(), undefined, undefined, 'action-language'),
             new ProblemNode('⬆️  提交当前题目', undefined, undefined, 'action-submit'),
             new ProblemNode('🌐  在浏览器打开当前题目', undefined, undefined, 'action-browser'),
         ];
@@ -188,6 +191,9 @@ export class ProblemTreeProvider implements vscode.TreeDataProvider<ProblemNode>
             // reads TreeView.selection instead.
             item.command = { command: 'ojassist.openProblem', title: 'Open problem' };
             item.iconPath = new vscode.ThemeIcon('file-code');
+        } else if (node.kind === 'action-language') {
+            item.command = { command: 'ojassist.pickLanguage', title: 'Choose language' };
+            item.iconPath = new vscode.ThemeIcon('symbol-enum');
         } else if (node.kind === 'action-submit') {
             item.command = { command: 'ojassist.quickSubmit', title: 'Submit current problem' };
             item.iconPath = new vscode.ThemeIcon('cloud-upload');
@@ -234,35 +240,27 @@ export async function openProblemFile(entry: ProblemListEntry): Promise<void> {
         return;
     }
     const backend = (config as any)?.backend ?? 'luogu';
+    // Extension + template follow the language chosen in the panel (if any).
+    const ext = languageFileExt(getPreferredLanguage());
+    const template = backend === 'leetcode' && ext === 'cpp'
+        ? leetcodeTemplate
+        : templateForExtension(ext);
     let relative: string;
-    let template: string;
     switch (backend) {
         case 'leetcode':
-            relative = path.join('problems', `${entry.id}.cpp`);
-            template = leetcodeTemplate;
-            break;
         case 'neuoj':
-            relative = path.join('problems', `${entry.id}.cpp`);
-            template = cppTemplate;
-            break;
-        case 'csecg':
-            relative = path.join('a', String(entry.contestId ?? '0'), `${entry.id}.cpp`);
-            template = cppTemplate;
-            break;
-        case 'hnucg':
-        case 'hnu-cg':
-            relative = path.join('a', String(entry.contestId ?? '0'), `${entry.id}.cpp`);
-            template = cppTemplate;
-            break;
         case 'hnuacm':
         case 'hnu-acm':
-            relative = path.join('problems', `${entry.id}.cpp`);
-            template = cppTemplate;
+            relative = path.join('problems', `${entry.id}.${ext}`);
+            break;
+        case 'csecg':
+        case 'hnucg':
+        case 'hnu-cg':
+            relative = path.join('a', String(entry.contestId ?? '0'), `${entry.id}.${ext}`);
             break;
         default:
-            // luogu: P1001.cpp in the workspace root; anything else keeps id as-is.
-            relative = `${entry.id}.cpp`;
-            template = cppTemplate;
+            // luogu: P1001.py in the workspace root; anything else keeps id as-is.
+            relative = `${entry.id}.${ext}`;
             break;
     }
     const fileUri = vscode.Uri.joinPath(folder.uri, relative);
@@ -334,4 +332,63 @@ function describeEntry(e: ProblemListEntry): string | undefined {
     if (e.status) { bits.push(e.status); }
     else if (e.difficulty) { bits.push(e.difficulty); }
     return bits.length > 0 ? bits.join(' ') : undefined;
+}
+
+/** "🌐 语言：C++（点击切换）" - current solving language. */
+function formatLanguageLabel(): string {
+    const pref = getPreferredLanguage();
+    return pref ? `🌐 语言：${pref.label}（点击切换）` : '🌐 语言：按文件扩展名自动（点击选择）';
+}
+
+/** Source template per language family (used when creating a solution file). */
+export function templateForExtension(ext: string): string {
+    if (ext === 'java') {
+        return ['import java.util.*;',
+            'import java.io.*;',
+            '',
+            'public class Main {',
+            '    public static void main(String[] args) {',
+            '        Scanner cin = new Scanner(System.in);',
+            '        ',
+            '    }',
+            '}',
+            ''].join('\n');
+    }
+    if (ext === 'py' || ext === 'py3') {
+        return ['import sys',
+            '',
+            'def main():',
+            '    data = sys.stdin.read().split()',
+            '    ',
+            '',
+            'if __name__ == "__main__":',
+            '    main()',
+            ''].join('\n');
+    }
+    if (ext === 'cs') {
+        return ['using System;',
+            '',
+            'class Program {',
+            '    static void Main() {',
+            '        ',
+            '    }',
+            '}',
+            ''].join('\n');
+    }
+    if (ext === 'c') {
+        return ['#include <stdio.h>',
+            '',
+            'int main(void) {',
+            '    ',
+            '    return 0;',
+            '}',
+            ''].join('\n');
+    }
+    if (['cpp', 'cc', 'cxx'].includes(ext)) {
+        return cppTemplate;
+    }
+    // go / kotlin / swift / rust / others: language-agnostic placeholder
+    return `// language file extension: .${ext}
+// TODO: solve the problem
+`;
 }
