@@ -37,6 +37,8 @@
 | `csecg` | NEU CSECG 作业平台 | 浏览器登录 | ✅ 全链路实测（搜题/看题/提交/状态/补交） |
 | `hnuacm` | HNU ACM/ICPC OJ | Edge/Chrome Cookie or password | Problems, statements, submit, status |
 | `hnucg` | HNU CourseGrading | Edge/Chrome Cookie (image captcha in browser) | Assignments, statements, submit, status |
+| `hdoj` | [杭电 OJ (HDOJ)](http://acm.hdu.edu.cn) | 浏览器 Cookie / 账号密码（登录无验证码） | ✅ 列表/搜索/读题实测 |
+| `hnuacm` / `hnucg` | 湖南大学 ACM / CourseGrading | 浏览器 Cookie | 来自社区 PR #1 |
 | `codeforces` | Codeforces | 账号密码 | 原版保留 |
 | `fjutacm` | FJUT ACM | 账号密码 | 原版保留 |
 
@@ -75,6 +77,14 @@ Cookie 自动写入配置并生效（浏览器配置持久化，之后一键刷�
 ```
 
 点击题目 → 自动生成代码文件并打开题面 → `Copy` 样例到 `.in` → 右键 **Run Code** 本地验证 → **Submit** 提交。
+
+### hdoj（杭电 OJ）
+
+- 页面为 GB18030 编码，适配器自动解码；登录无验证码（也可浏览器登录）
+- 题库按卷浏览（74 卷 ×100 题）+ 关键词搜索（`search.php` 官方接口）
+- 语言映射：`cpp→G++(1)`、`c→C(4)`、`java→Java(6)`、`cs→C#(7)`，可用 `languages` 覆盖
+- 文件命名：`problems/1000.cpp`
+- 提交前自动解析真实提交表单（字段名随站点变化也不怕），状态轮询 `status.php`
 
 ## 🧩 配置示例
 

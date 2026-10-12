@@ -5,6 +5,7 @@ import { CSECG } from './csecg/CSECG';
 import { LuoguOJ } from './luogu/LuoguOJ';
 import { LeetCodeOJ } from './leetcode/LeetCodeOJ';
 import { HNUACMOJ } from './hnuacm/HNUACMOJ';
+import { HDOJ } from './hdoj/HDOJ';
 import { HNUCG } from './hnucg/HNUCG';
 
 export const backends: { [key: string]: any } = {
@@ -18,5 +19,7 @@ export const backends: { [key: string]: any } = {
 	'hnucg': HNUCG,
 	// Accept readable aliases in hand-written configuration files.
 	'hnu-acm': HNUACMOJ,
+	'hdoj': HDOJ,
+	'hduoj': HDOJ,
 	'hnu-cg': HNUCG,
 };

@@ -54,6 +54,20 @@ const CARDS: PlatformCard[] = [
         },
     },
     {
+        backend: 'hdoj',
+        name: '杭电 OJ (HDOJ)',
+        example: 'problems/1000.cpp',
+        desc: 'acm.hdu.edu.cn；登录无验证码，题库按卷浏览 + 关键词搜索',
+        config: {
+            backend: 'hdoj',
+            credentials: {},
+            pathParseRule: {
+            contestProblem: 'c[\\\\/](\\d+)[\\\\/](\\w+)[\\.\\w]*\\.(\\w+)$',
+            normalProblem: 'problems?[\\\\/](\\d+)[\\.\\w]*\\.(\\w+)$',
+            },
+        },
+    },
+    {
         backend: 'csecg', name: 'CSECG 作业平台', example: 'problems/题目.cpp',
         desc: 'neucsecg.neu.edu.cn；接口需登录后在配置 endpoints 中补全',
         config: {

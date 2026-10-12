@@ -84,6 +84,23 @@ const platforms: { [backend: string]: PlatformSpec } = {
             return response.status === 200;
         },
     },
+    hdoj: {
+        loginUrl: 'http://acm.hdu.edu.cn/',
+        domainSuffix: 'acm.hdu.edu.cn',
+        // PHPSESSID exists before logging in too -> verify server-side.
+        cookieCheck: c => !!c['PHPSESSID'],
+        probe: async cookie => {
+            const response = await axios.get('http://acm.hdu.edu.cn/', {
+                headers: { 'User-Agent': browserUA, 'Cookie': cookie },
+                timeout: 20000,
+                responseType: 'arraybuffer',
+                validateStatus: () => true,
+            });
+            const text = new TextDecoder('gb18030').decode(new Uint8Array(response.data));
+            // Logged-in homepage carries the logout link.
+            return /action=logout/i.test(text);
+        },
+    },
     csecg: {
         loginUrl: 'http://neucsecg.neu.edu.cn/',
         domainSuffix: 'neucsecg.neu.edu.cn',
