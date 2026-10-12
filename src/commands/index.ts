@@ -5,13 +5,14 @@ import Data from './data';
 import DataFile from './dataFile';
 import WebLogin from './webLogin';
 import InitWorkspace from './initWorkspace';
+import QQToken from './qqToken';
 import { ProblemTreeProvider, ProblemNode, openProblemFile } from '../problems/tree';
 import * as path from 'path';
 import { parseSourceFile } from '../utils';
 import { getPreferredLanguage, setPreferredLanguage } from '../utils/languageState';
 import { config, ojServer } from '../extension';
 
-const commands: Array<vscode.Disposable> = [Submit, Data, DataFile, WebLogin, InitWorkspace];
+const commands: Array<vscode.Disposable> = [Submit, Data, DataFile, WebLogin, InitWorkspace, QQToken];
 
 /** Register one command; a failure must never block the others. */
 function safePush(context: vscode.ExtensionContext, fn: () => vscode.Disposable, label: string): void {

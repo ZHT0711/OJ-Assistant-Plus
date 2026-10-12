@@ -175,6 +175,11 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
     }
 
     /** Translate the current statement EN -> ZH (or restore the original). */
+    /** Provider config from .ojassistconfig.json (`translation` section). */
+    private translateOptions(): any {
+        return (this.config as any)?.translation ?? {};
+    }
+
     private async translateCurrent(): Promise<void> {
         if (!this.lastContent || !this.lastProblemInfo || this.translating) { return; }
         const info = this.lastProblemInfo;
@@ -192,10 +197,10 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
                     <div><span class="oa-loading">&#8635;</span> 翻译中...</div>
                 </div>`);
             const [desc, input, output, note] = await Promise.all([
-                translateHtmlToChinese(String(src.desc ?? '')),
-                translateHtmlToChinese(String(src.input ?? '')),
-                translateHtmlToChinese(String(src.output ?? '')),
-                translateHtmlToChinese(String(src.note ?? '')),
+                translateHtmlToChinese(String(src.desc ?? ''), this.translateOptions()),
+                translateHtmlToChinese(String(src.input ?? ''), this.translateOptions()),
+                translateHtmlToChinese(String(src.output ?? ''), this.translateOptions()),
+                translateHtmlToChinese(String(src.note ?? ''), this.translateOptions()),
             ]);
             if (this.currentProblem !== info) { return; } // user switched away
             const translated = Object.assign({}, src, { desc, input, output, note, __translated: true });

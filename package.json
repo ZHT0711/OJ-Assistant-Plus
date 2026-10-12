@@ -4,7 +4,7 @@
 	"description": "在 VS Code 里刷遍所有 OJ：洛谷 / 力扣 / NEU OJ / CSECG / HDOJ / Codeforces - 看题、测样例、一键交题",
 	"publisher": "ZHT0711",
 	"preview": false,
-	"version": "0.6.5",
+	"version": "0.6.6",
 	"license": "SEE LICENSE IN LICENSE",
 	"icon": "assets/icon/512x512.png",
 	"engines": {
@@ -103,6 +103,10 @@
 			{
 				"command": "ojassist.pickLanguage",
 				"title": "OJ-Assistant: 🌐 选择做题语言"
+			},
+			{
+				"command": "ojassist.qqTranslateToken",
+				"title": "OJ-Assistant: 获取腾讯翻译Token"
 			}
 		],
 		"viewsContainers": {

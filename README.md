@@ -113,6 +113,27 @@ Cookie 自动写入配置并生效（浏览器配置持久化，之后一键刷�
 - 修复原版面板折叠不渲染、Copy/Edit 失效等交互问题
 - 构建链现代化（webpack 5 最新版、Node 24 兼容）
 
+### 🌐 翻译通道配置（题面面板的翻译按钮）
+
+默认 `auto`：**Google gtx（免密钥）→ 腾讯（已存Token时）→ 有道（已配密钥时）→ MyMemory**，逐级兜底。在 `.ojassistconfig.json` 里按需配置：
+
+```jsonc
+"translation": {
+  "provider": "auto",              // auto | google | tencent | youdao | mymemory
+  // 腾讯（fanyi.qq.com，与网页版同引擎，免密钥）：
+  //   F1 -> "获取腾讯翻译Token"，浏览器里过一次腾讯验证码即可自动写入
+  // "tencentWebToken": "...",
+  // 有道智云开放平台（openapi.youdao.com，免费注册）：
+  // "youdao": { "appKey": "...", "appSecret": "..." },
+  // 腾讯云官方 TMT 密钥（备用）：
+  // "tencent": { "secretId": "...", "secretKey": "..." }
+}
+```
+
+- **腾讯 Token**：命令面板 → `获取腾讯翻译Token` → 在弹出的 fanyi.qq.com 页面过一次验证码 → Token 自动写入配置（带有效期）
+- 有道/腾讯官方通道需要注册密钥（页面顶部链接），不配则自动跳过
+- 代码块与样例永不翻译；翻译失败自动切换下一通道
+
 ## 📦 发布到 VS Code Marketplace
 
 1. 在 [marketplace 管理后台](https://marketplace.visualstudio.com/manage) 用微软账号注册发布者 ID `ZHT0711`（一次性）
