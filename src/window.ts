@@ -106,7 +106,7 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
                 <meta
                     http-equiv="Content-Security-Policy"
                     content="default-src 'none';
-                    img-src ${this._view.webview.cspSource} https: 'strict-dynamic';
+                    img-src ${this._view.webview.cspSource} https: http: data: 'strict-dynamic';
                     script-src ${this._view.webview.cspSource} 'nonce-${nonce}';
                     style-src ${this._view.webview.cspSource} 'self' 'unsafe-inline' https:;
                     media-src ${this._view.webview.cspSource} vscode-webview: https:;

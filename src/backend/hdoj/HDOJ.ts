@@ -3,6 +3,7 @@ import axiosCookieJarSupport from '@3846masa/axios-cookiejar-support';
 import { stringify as qstringify } from 'qs';
 import { CookieJar, Cookie } from 'tough-cookie';
 import * as cheerio from 'cheerio';
+import { URL } from 'url';
 import {
     OJ, User, Configuration,
     SourceFile, ProblemSubmit, Problem, ProblemInfo,
@@ -166,8 +167,20 @@ export class HDOJ implements OJ {
 
     async getProblem(problemInfo: ProblemInfo): Promise<Problem> {
         const pid = String(problemInfo.id);
-        const html = await this.httpGetHtml(this.baseUrl + '/showproblem.php?pid=' + encodeURIComponent(pid));
+        const pageUrl = this.baseUrl + '/showproblem.php?pid=' + encodeURIComponent(pid);
+        const html = await this.httpGetHtml(pageUrl);
         const $ = cheerio.load(html);
+        // Statement images use relative paths (e.g. ../../data/images/1012-1.gif)
+        // and HDOJ is plain http - resolve them to absolute URLs so the webview
+        // (and its CSP) can load them.
+        $('img').each((i, el) => {
+            const src = $(el).attr('src');
+            if (src && !/^(https?:)?\/\//i.test(src) && !/^data:/i.test(src)) {
+                try {
+                    $(el).attr('src', new URL(src, pageUrl).toString());
+                } catch { /* leave as-is */ }
+            }
+        });
 
         const title = ($('h1').first().text() || '').trim() || ('Problem ' + pid);
 
