@@ -13,4 +13,4 @@ dist/
 smoke-test.js
 test-weblogin.js
 p3885.html
-out-tmp/
+out-tmp*/
