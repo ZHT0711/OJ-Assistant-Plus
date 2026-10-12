@@ -249,6 +249,8 @@ export async function openProblemFile(entry: ProblemListEntry): Promise<void> {
     switch (backend) {
         case 'leetcode':
         case 'neuoj':
+        case 'hdoj':
+        case 'hduoj':
         case 'hnuacm':
         case 'hnu-acm':
             relative = path.join('problems', `${entry.id}.${ext}`);

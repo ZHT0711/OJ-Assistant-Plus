@@ -63,7 +63,7 @@ const CARDS: PlatformCard[] = [
             credentials: {},
             pathParseRule: {
             contestProblem: 'c[\\\\/](\\d+)[\\\\/](\\w+)[\\.\\w]*\\.(\\w+)$',
-            normalProblem: 'problems?[\\\\/](\\d+)[\\.\\w]*\\.(\\w+)$',
+            normalProblem: '(?:problems?[\\\\/])?(\\d+)[\\.\\w]*\\.(\\w+)$',
             },
         },
     },
