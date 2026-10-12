@@ -4,7 +4,7 @@
 	"description": "在 VS Code 里刷遍所有 OJ：洛谷 / 力扣 / NEU OJ / CSECG / HDOJ / Codeforces - 看题、测样例、一键交题",
 	"publisher": "ZHT0711",
 	"preview": false,
-	"version": "0.6.6",
+	"version": "0.6.7",
 	"license": "SEE LICENSE IN LICENSE",
 	"icon": "assets/icon/512x512.png",
 	"engines": {

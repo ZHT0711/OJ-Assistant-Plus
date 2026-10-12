@@ -26,6 +26,8 @@ export interface TranslateOptions {
     tencentWebToken?: string;
     youdao?: { appKey?: string; appSecret?: string };
     tencent?: { secretId?: string; secretKey?: string };
+    baidu?: { appId?: string; secretKey?: string };
+    caiyun?: { token?: string };
 }
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0';
@@ -182,12 +184,63 @@ function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ------------------------------------------------- baidu official transapi
+
+async function baiduOfficial(text: string, appId: string, secretKey: string): Promise<string> {
+    const salt = String(Math.floor(Math.random() * 1e8));
+    const sign = createHash('md5').update(appId + text + salt + secretKey).digest('hex');
+    const response = await axios.get('https://fanyi-api.baidu.com/transapi', {
+        params: { q: text, from: 'auto', to: 'zh', appid: appId, salt, sign },
+        headers: { 'User-Agent': UA },
+        timeout: 20000,
+    });
+    const data = response.data;
+    if (data?.error_code && data.error_code !== 52000) {
+        throw new Error('baidu: ' + data.error_code + ' ' + (data.error_msg ?? data.errmsg ?? ''));
+    }
+    const first = Array.isArray(data?.data) ? data.data[0] : data?.data;
+    if (first?.dst) { return String(first.dst); }
+    if (Array.isArray(first?.paragraphs)) { return first.paragraphs.join(''); }
+    if (data?.trans_result?.[0]?.dst) { return String(data.trans_result[0].dst); }
+    throw new Error('baidu: unexpected response');
+}
+
+// ------------------------------------------------- caiyun xiaoyi (彩云小译)
+
+async function caiyunTranslate(text: string, token: string): Promise<string> {
+    const response = await axios.post('http://api.interpreter.caiyunai.com/v1/translator', {
+        source: [text],
+        trans_type: 'auto2zh',
+        request_id: 'oj-assistant-' + Date.now(),
+        os_type: 'web',
+        media: 'text',
+        dict: '',
+        user: 'oj-assistant',
+        url: '',
+    }, {
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Token': token,
+            'User-Agent': UA,
+        },
+        timeout: 20000,
+        validateStatus: () => true,
+    });
+    const data = response.data;
+    if (Array.isArray(data?.target) && data.target.length > 0) {
+        return String(data.target[0]);
+    }
+    throw new Error('caiyun: ' + (data?.message ?? data?.msg ?? ('HTTP ' + response.status)));
+}
+
 // ------------------------------------------------------------- orchestration
 
 async function translateVia(text: string, opts: TranslateOptions): Promise<string> {
     const provider = opts.provider ?? 'auto';
     const yd = opts.youdao;
     const tc = opts.tencent;
+    const bd = opts.baidu;
+    const cy = opts.caiyun;
 
     const tryOrder: Array<() => Promise<string>> = [];
     const push = (fn: () => Promise<string>) => { tryOrder.push(fn); };
@@ -216,15 +269,30 @@ async function translateVia(text: string, opts: TranslateOptions): Promise<strin
                 throw new Error('腾讯翻译：请先运行命令“获取腾讯翻译Token”，或配置 translation.tencent.secretId/secretKey');
             }
             break;
+        case 'baidu':
+            if (bd?.appId && bd?.secretKey) {
+                push(() => baiduOfficial(text, bd.appId!, bd.secretKey!));
+            } else {
+                throw new Error('百度翻译需要配置 translation.baidu.appId/secretKey（百度翻译开放平台免费注册）');
+            }
+            break;
+        case 'caiyun':
+            if (cy?.token) {
+                push(() => caiyunTranslate(text, cy.token!));
+            } else {
+                throw new Error('彩云小译需要配置 translation.caiyun.token（彩云译API免费申请）');
+            }
+            break;
         case 'mymemory':
             push(() => myMemoryTranslate(text));
             break;
-        default: // auto
-            push(() => googleTranslate(text));
+        default: // auto: configured domestic channels first, then google, then mymemory
+            if (bd?.appId && bd?.secretKey) { push(() => baiduOfficial(text, bd.appId!, bd.secretKey!)); }
             if (opts.tencentWebToken) { push(() => tencentWeb(text, opts.tencentWebToken!)); }
-            if (yd?.appKey && yd?.appSecret) {
-                push(() => youdaoOfficial(text, yd.appKey!, yd.appSecret!));
-            }
+            if (yd?.appKey && yd?.appSecret) { push(() => youdaoOfficial(text, yd.appKey!, yd.appSecret!)); }
+            if (cy?.token) { push(() => caiyunTranslate(text, cy.token!)); }
+            if (tc?.secretId && tc?.secretKey) { push(() => tencentOfficial(text, tc.secretId!, tc.secretKey!)); }
+            push(() => googleTranslate(text));
             push(() => myMemoryTranslate(text));
             break;
     }
@@ -268,16 +336,26 @@ export async function translateHtmlToChinese(
     // 3. translate with small concurrency
     const CONCURRENCY = 3;
     let cursor = 0;
+    let failures = 0;
+    let lastError: unknown;
     async function worker(): Promise<void> {
         while (cursor < targets.length) {
             const idx = targets[cursor++];
             try {
                 parts[idx] = await translateVia(parts[idx], opts);
-            } catch { /* keep original on failure */ }
+            } catch (err) {
+                failures += 1;
+                lastError = err;
+            }
             await delay(120);
         }
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    // Misconfiguration / all channels down: surface the error instead of
+    // silently returning the untranslated original text.
+    if (targets.length > 0 && failures >= targets.length && lastError) {
+        throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    }
 
     // 4. restore verbatim regions
     let result = parts.join('');

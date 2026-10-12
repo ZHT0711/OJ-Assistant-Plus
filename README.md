@@ -119,16 +119,24 @@ Cookie 自动写入配置并生效（浏览器配置持久化，之后一键刷�
 
 ```jsonc
 "translation": {
-  "provider": "auto",              // auto | google | tencent | youdao | mymemory
-  // 腾讯（fanyi.qq.com，与网页版同引擎，免密钥）：
-  //   F1 -> "获取腾讯翻译Token"，浏览器里过一次腾讯验证码即可自动写入
+  "provider": "auto",   // auto | google | baidu | tencent | youdao | caiyun | mymemory
+
+  // 国内通道（auto 时已配置的国内通道优先，失败自动降级）：
+  // 腾讯（fanyi.qq.com 同引擎，免密钥）：F1 -> "获取腾讯翻译Token" 过一次验证码即可
   // "tencentWebToken": "...",
-  // 有道智云开放平台（openapi.youdao.com，免费注册）：
+  // 百度翻译开放平台（fanyi-api.baidu.com，免费注册）：
+  // "baidu": { "appId": "...", "secretKey": "..." },
+  // 有道智云（openapi.youdao.com，免费注册）：
   // "youdao": { "appKey": "...", "appSecret": "..." },
+  // 彩云小译（免费 token）：
+  // "caiyun": { "token": "..." },
   // 腾讯云官方 TMT 密钥（备用）：
   // "tencent": { "secretId": "...", "secretKey": "..." }
 }
 ```
+
+> 实测结论：国内**免密钥整句翻译**只剩腾讯（一次验证码）；百度/有道/彩云的免密钥老接口均已关闭，
+> 需要免费注册拿 key（都是一次性配置，auto 通道下失败会自动降级，不会翻译中断）。
 
 - **腾讯 Token**：命令面板 → `获取腾讯翻译Token` → 在弹出的 fanyi.qq.com 页面过一次验证码 → Token 自动写入配置（带有效期）
 - 有道/腾讯官方通道需要注册密钥（页面顶部链接），不配则自动跳过
