@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { OJ, OJAssistConfig, ProblemInfo } from "./model";
 import { parseSourceFile, renderLatex } from "./utils";
+import { readFileSync } from 'fs';
 import * as path from 'path';
 
 let _view!: vscode.WebviewView;
@@ -10,6 +11,8 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
     public currentProblem!: ProblemInfo;
 
     private _view!: vscode.WebviewView;
+    /** Processed KaTeX css (fonts rewritten to webview URIs), read once. */
+    private katexCss: string | undefined;
     /** Last problem requested while the (collapsed) view did not exist yet. */
     private pendingProblem: ProblemInfo | undefined;
     private messageHandlerRegistered = false;
@@ -86,6 +89,28 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
                     break;
             }
         });
+    }
+
+    /**
+     * KaTeX css inlined into the template: external <link> loading (and the
+     * leftover CDN integrity attribute) silently failed in some environments,
+     * leaving MathML raw text visible in the panel.
+     */
+    private getKatexCss(): string {
+        if (this.katexCss === undefined) {
+            try {
+                const cssPath = path.join(this.extensionUri.fsPath, 'assets', 'katex', 'katex.min.css');
+                let css = readFileSync(cssPath, 'utf8');
+                const fontsBase = this._view.webview.asWebviewUri(
+                    vscode.Uri.joinPath(this.extensionUri, 'assets', 'katex')).toString();
+                css = css.replace(/url\(fonts\//g, 'url(' + fontsBase + '/fonts/');
+                this.katexCss = css;
+            } catch (err) {
+                console.error('OJ-Assistant: failed to inline katex css', err);
+                this.katexCss = '';
+            }
+        }
+        return this.katexCss;
     }
 
     public renderView(problemInfo: ProblemInfo): void {
@@ -180,9 +205,7 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
                         }
                     });
                 </script>
-                <!-- KaTeX styling is progressive enhancement: loaded after the
-                     script so a slow CDN can never break the panel again. -->
-                <link rel="stylesheet" href="${this._view.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'assets', 'katex', 'katex.min.css'))}" nonce="${nonce}">
+                <style nonce="${nonce}">${this.getKatexCss()}</style>
             </body>
         </html>
         `;

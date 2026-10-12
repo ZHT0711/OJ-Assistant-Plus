@@ -11,6 +11,7 @@ import {
     OJ, User, Configuration, SimpleUserPasswordCredential,
     SourceFile, ProblemSubmit, Problem, ProblemInfo, ProblemListEntry, ProblemListPage
 } from '../../model';
+import { markdownToHtml } from '../../utils';
 
 axiosCookieJarSupport(axios);
 
@@ -236,35 +237,76 @@ export class NEUOJ implements OJ {
         const page = await this.fetchProblemPage(problemInfo);
         const $ = page.$;
 
-        const title =
-            $('.problem-title, .problem-header h1, h1').first().text().trim() ||
-            $('title').text().replace(/\s*[-|–]\s*F_OnlineJudge.*$/i, '').trim() ||
-            `Problem ${problemInfo.id}`;
+        // ---- Title: prefer page elements, then a cleaned <title>, then md ----
+        const stripSite = (t: string) => t.trim()
+            .replace(new RegExp('^F_OnlineJudge' + '\\s*[-\u2013|]?\\s*', 'i'), '')
+            .replace(new RegExp('\\s*[-\u2013|]\\s*F_OnlineJudge.*$', 'i'), '')
+            .trim();
+        const isScoreMeta = (t: string) => /知识[：:]|思维[：:]|实现[：:]/.test(t) && /分/.test(t);
+        let title = '';
+        try {
+            await this.ensureCatalog();
+            title = this.problemCatalog?.find(p => p.id === String(problemInfo.id))?.title ?? '';
+        } catch { /* catalog unavailable - fall back to page elements */ }
+        if (!title) {
+            title = stripSite($('.problem-title, .problem-header h1, h1').first().text() || '');
+        }
+        if (!title || isScoreMeta(title)) {
+            const alt = stripSite($('h2, .card-title, .card-header').first().text() || '');
+            title = (alt && !isScoreMeta(alt)) ? alt : '';
+        }
+        if (!title || isScoreMeta(title)) {
+            const fromTag = stripSite($('title').first().text() || '');
+            title = (fromTag && !isScoreMeta(fromTag)) ? fromTag : '';
+        }
 
-        // Statement container candidates, most specific first. Fall back to the
-        // whole main area so the webview always renders something useful.
-        const descHtml = this.firstHtml($, [
+        // ---- Statement: NEU OJ stores Markdown (### sections, ``` fences) ----
+        const vditorText = $('#problem-content-vditor').text().trim();
+        const containerHtml = vditorText ? '' : (this.firstHtml($, [
             '.problem-description',
             '.problem-statement',
             'article .content',
             'article',
             '.card-body .problem',
             'main',
-        ]) ?? $('.card-body').first().html() ?? $.html();
+        ]) ?? $('.card-body').first().html() ?? '');
+        const rawMarkdown = vditorText || cheerio.load('<div>' + containerHtml + '</div>')('div').first().text();
 
-        const inputHtml = this.labeledSection($, ['输入格式', '输入说明', 'Input', '输入']) ?? '';
-        const outputHtml = this.labeledSection($, ['输出格式', '输出说明', 'Output', '输出']) ?? '';
+        const sections = splitMarkdownSections(rawMarkdown);
+        if (!title) {
+            const firstHeading = rawMarkdown.match(new RegExp('^#' + '{1,4}\\s+(.+)$', 'm'));
+            const candidate = (firstHeading?.[1] ?? '').trim();
+            title = candidate && !/题面描述|题目描述|数据范围/.test(candidate) ? candidate : '';
+        }
+        if (!title) { title = 'Problem ' + problemInfo.id; }
 
-        const samples = this.extractSamples($);
+        // Samples: #### 输入样例N ``` ... ``` / #### 输出样例N ``` ... ```
+        const sampleInput: string[] = [];
+        const sampleOutput: string[] = [];
+        const cardIn = $('#problem-input-example pre').first().text().replace(/\n$/, '');
+        const cardOut = $('#problem-output-example pre').first().text().replace(/\n$/, '');
+        const inBlocks: any[] = cardIn ? [{ 0: cardIn }] : [...rawMarkdown.matchAll(new RegExp('输入样例[^`]*`{3,}[\\s\\S]*?' + '`{3,}', 'g'))];
+        const outBlocks: any[] = cardOut ? [{ 0: cardOut }] : [...rawMarkdown.matchAll(new RegExp('输出样例[^`]*`{3,}[\\s\\S]*?' + '`{3,}', 'g'))];
+        const stripFence = (block: string) => block.replace(/^[^`]*`{3,}[\w]*\n?/, '').replace(/`{3,}\s*$/, '').replace(/\n$/, '');
+        for (const b of inBlocks) { sampleInput.push(pre(escapeText(stripFence(b[0])))); }
+        for (const b of outBlocks) { sampleOutput.push(escapeText(stripFence(b[0])).replace(/\n$/, '')); }
+        // Remove sample sections from the description (they render separately).
+        const descBody = (sections['题面描述'] ?? sections['题目描述'] ?? sections['题面'] ?? sections['描述'] ?? rawMarkdown)
+            .replace(new RegExp('^#' + '{1,6}\\*输入样例[\\s\\S]*$', 'm'), '')
+            .replace(new RegExp('^#' + '{1,6}\\*输出样例[\\s\\S]*$', 'm'), '');
+
+        const inputMd = sections['输入'] ?? sections['输入格式'] ?? '';
+        const outputMd = sections['输出'] ?? sections['输出格式'] ?? '';
+        const noteMd = sections['数据范围'] ?? sections['说明'] ?? sections['备注'] ?? '';
 
         return new Problem(problemInfo.id, problemInfo.contestId, {
             title,
-            desc: descHtml,
-            input: inputHtml,
-            output: outputHtml,
-            sampleInput: samples.map(s => s[0]),
-            sampleOutput: samples.map(s => s[1]),
-            note: this.labeledSection($, ['说明', '备注', 'Hint', 'Note', '数据范围']) ?? '',
+            desc: markdownToHtml(descBody) || '<p>(无题面内容)</p>',
+            input: markdownToHtml(inputMd),
+            output: markdownToHtml(outputMd),
+            sampleInput: sampleInput.length ? sampleInput : [],
+            sampleOutput: sampleOutput.length ? sampleOutput : [],
+            note: markdownToHtml(noteMd),
         });
     }
 
@@ -310,26 +352,31 @@ export class NEUOJ implements OJ {
      */
     private problemCatalog: Array<{ id: string; title: string; isAc: boolean; tried: boolean }> | undefined;
 
+    /** Public /api/problems catalog (fetched once): titles + AC flags. */
+    private async ensureCatalog(): Promise<void> {
+        if (this.problemCatalog) { return; }
+        const response = await axios.get(this.baseUrl + '/api/problems', {
+            headers: { 'User-Agent': ((this.axiosConfig.headers as any)?.['User-Agent']) ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0' },
+            timeout: 180000,
+        });
+        const list = response.data?.data;
+        this.problemCatalog = Array.isArray(list)
+            ? list.map((p: any) => ({
+                id: String(p.id ?? p.value),
+                title: String(p.title ?? ''),
+                isAc: p.is_ac === 1 || p.is_ac === true,
+                tried: Number(p.my_count ?? 0) > 0,
+            }))
+            : [];
+    }
+
     async searchProblems(keyword: string, page: number): Promise<ProblemListPage> {
-        if (!this.problemCatalog) {
-            const response = await axios.get(this.baseUrl + '/api/problems', {
-                headers: { 'User-Agent': ((this.axiosConfig.headers as any)?.['User-Agent']) ?? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0' },
-                timeout: 180000,
-            });
-            const list = response.data?.data;
-            this.problemCatalog = Array.isArray(list)
-                ? list.map((p: any) => ({
-                    id: String(p.id ?? p.value),
-                    title: String(p.title ?? ''),
-                    isAc: p.is_ac === 1 || p.is_ac === true,
-                    tried: Number(p.my_count ?? 0) > 0,
-                }))
-                : [];
-        }
+        await this.ensureCatalog();
+        const catalog = this.problemCatalog ?? [];
         const kw = keyword.trim().toLowerCase();
         const matched = kw
-            ? this.problemCatalog.filter(p => p.id.toLowerCase().includes(kw) || p.title.toLowerCase().includes(kw))
-            : this.problemCatalog;
+            ? catalog.filter(p => p.id.toLowerCase().includes(kw) || p.title.toLowerCase().includes(kw))
+            : catalog;
         const pageSize = 20;
         const start = (page - 1) * pageSize;
         return {
@@ -719,4 +766,29 @@ export class NEUOJ implements OJ {
         }
         return undefined;
     }
+}
+
+
+/** Split markdown into sections keyed by their `### heading` text. */
+function splitMarkdownSections(md: string): { [heading: string]: string } {
+    const result: { [heading: string]: string } = {};
+    const re = new RegExp('^' + '#{2,4}\\s*(.+?)\\s*$', 'gm');
+    const matches = [...md.matchAll(re)];
+    for (let i = 0; i < matches.length; i++) {
+        const heading = matches[i][1].replace(/[：:]$/, '');
+        const bodyStart = matches[i].index! + matches[i][0].length;
+        const bodyEnd = i + 1 < matches.length ? matches[i + 1].index! : md.length;
+        if (result[heading] === undefined) {
+            result[heading] = md.slice(bodyStart, bodyEnd).trim();
+        }
+    }
+    return result;
+}
+
+function escapeText(text: string): string {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function pre(html: string): string {
+    return '<pre>' + html + '</pre>';
 }
