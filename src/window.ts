@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { OJ, OJAssistConfig, ProblemInfo } from "./model";
-import { parseSourceFile, renderLatex } from "./utils";
+import { parseSourceFile, renderLatex, translateHtmlToChinese } from "./utils";
 import { readFileSync } from 'fs';
 import * as path from 'path';
 
@@ -11,6 +11,13 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
     public currentProblem!: ProblemInfo;
 
     private _view!: vscode.WebviewView;
+    /** Last rendered statement (for the translate button) + restore state. */
+    private lastContent: any;
+    private lastProblemInfo: ProblemInfo | undefined;
+    private lastOriginal: any;
+    private isTranslated = false;
+    private translating = false;
+    private currentTemplate = '';
     /** Processed KaTeX css (fonts rewritten to webview URIs), read once. */
     private katexCss: string | undefined;
     /** Last problem requested while the (collapsed) view did not exist yet. */
@@ -87,6 +94,9 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
                 case 'edit':
                     vscode.commands.executeCommand('ojassist.data');
                     break;
+                case 'translate':
+                    void this.translateCurrent();
+                    break;
             }
         });
     }
@@ -111,6 +121,92 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
             }
         }
         return this.katexCss;
+    }
+
+    /** Paint a (possibly translated) statement into the webview. */
+    private paintProblem(problemInfo: ProblemInfo, content: any): void {
+        let sampleIOs = ``;
+        for (let i = 0; i < content.sampleInput.length; i++) {
+            sampleIOs += `
+            <div>
+                <h2>
+                    Sample#${i + 1}:
+                    <button class="dot btn-copy" data-src="${i}">Copy</button>
+                    <button class="dot btn-edit" data-src="${i}">Edit</button>
+                </h2>
+                <div id="sampleInput-${i}">${content.sampleInput[i]}</div>
+                <h2>
+                Output#${i + 1}:
+                <!--
+                <button class="dot btn-run" data-src="${i}">Run</button>
+                -->
+            </h2>
+            <pre>${content.sampleOutput[i]}</pre>
+            </div>
+            `;
+        }
+        this._view.webview.html = this.currentTemplate.replace('{0}', `
+            <h1 align="center">${content.title}</h1>
+                <div align="center" style="margin-bottom:8px;"><button class="dot btn-translate">${content.__translated ? '✓ 已翻译（点击还原）' : '🌐 翻译成中文'}</button></div>
+            <div>
+                <h2>Description:</h2>
+                <p>${renderLatex(content.desc)}</p>
+            </div>
+            <div>
+                <h2>Input:</h2>
+                <p>${renderLatex(content.input)}</p>
+            </div>
+            <div>
+                <h2>Output:</h2>
+                <p>${renderLatex(content.output)}</p>
+            </div>
+            
+            <div>
+            ${sampleIOs}
+            </div>
+
+            <div>
+                <h2>Note:</h2>
+                <p>${renderLatex(content.note ?? 'None')}</p>
+            </div>
+        `);
+        const meta = (content as any).viewMeta as string | undefined;
+        this._view.title = meta ? `OJ: Problem#${problemInfo.id} · ${meta}` : `OJ: Problem#${problemInfo.id}`;
+    }
+
+    /** Translate the current statement EN -> ZH (or restore the original). */
+    private async translateCurrent(): Promise<void> {
+        if (!this.lastContent || !this.lastProblemInfo || this.translating) { return; }
+        const info = this.lastProblemInfo;
+        if (this.isTranslated) {
+            this.isTranslated = false;
+            this.paintProblem(info, this.lastOriginal ?? this.lastContent);
+            return;
+        }
+        this.translating = true;
+        try {
+            const src = this.lastContent;
+            this.lastOriginal = src;
+            this._view.webview.html = this.currentTemplate.replace('{0}', `
+                <div align="center" style="font-size: 32px;">
+                    <div><span class="oa-loading">&#8635;</span> 翻译中...</div>
+                </div>`);
+            const [desc, input, output, note] = await Promise.all([
+                translateHtmlToChinese(String(src.desc ?? '')),
+                translateHtmlToChinese(String(src.input ?? '')),
+                translateHtmlToChinese(String(src.output ?? '')),
+                translateHtmlToChinese(String(src.note ?? '')),
+            ]);
+            if (this.currentProblem !== info) { return; } // user switched away
+            const translated = Object.assign({}, src, { desc, input, output, note, __translated: true });
+            this.isTranslated = true;
+            this.paintProblem(info, translated);
+        } catch (err: any) {
+            vscode.window.showErrorMessage('OJ-Assistant: 翻译失败: ' + (err?.message ?? err));
+            this.paintProblem(info, this.lastOriginal ?? this.lastContent);
+        } finally {
+            this.translating = false;
+        }
     }
 
     public renderView(problemInfo: ProblemInfo): void {
@@ -194,6 +290,11 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
                             vscode.postMessage({ command: 'edit' });
                         });
                     });
+                    document.querySelectorAll('.btn-translate').forEach(el => {
+                        el.addEventListener('click', () => {
+                            vscode.postMessage({ command: 'translate' });
+                        });
+                    });
 
                     window.addEventListener('message', event => {
                         const msg = event.data;
@@ -209,6 +310,7 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
             </body>
         </html>
         `;
+        this.currentTemplate = templateHtml;
         this._view.webview.html = templateHtml.replace('{0}', `
                 <div align="center" style="font-size: 32px;">
                     <div>
@@ -220,65 +322,10 @@ export class ProblemInfoViewProvider implements vscode.WebviewViewProvider {
         this.oj().getProblem(problemInfo).then(problem => {
             if (seq !== this.renderSeq) { return; } // a newer render superseded this one
             this.currentProblem = problemInfo;
-            let sampleIOs = ``;
-            for (let i = 0; i < problem.content.sampleInput.length; i++) {
-                sampleIOs += `
-                <div>
-                    <h2>
-                        Sample#${i + 1}:
-                        <button class="dot btn-copy" data-src="${i}">Copy</button>
-                        <button class="dot btn-edit" data-src="${i}">Edit</button>
-                    </h2>
-                    <div id="sampleInput-${i}">${problem.content.sampleInput[i]}</div>
-                    <h2>
-                    Output#${i + 1}:
-                    <!--
-                    <button class="dot btn-run" data-src="${i}">Run</button>
-                    -->
-                </h2>
-                <pre>${problem.content.sampleOutput[i]}</pre>
-                </div>
-                `;
-            }
-            this._view.webview.html = templateHtml.replace('{0}', `
-                <h1 align="center">${problem.content.title}</h1>
-                <div>
-                    <h2>Description:</h2>
-                    <p>${renderLatex(problem.content.desc)}</p>
-                </div>
-                <div>
-                    <h2>Input:</h2>
-                    <p>${renderLatex(problem.content.input)}</p>
-                </div>
-                <div>
-                    <h2>Output:</h2>
-                    <p>${renderLatex(problem.content.output)}</p>
-                </div>
-                
-                <div>
-                ${sampleIOs}
-                </div>
-
-                <div>
-                    <h2>Note:</h2>
-                    <p>${renderLatex(problem.content.note ?? 'None')}</p>
-                </div>
-            `);
-            const meta = (problem.content as any).viewMeta as string | undefined;
-            this._view.title = meta ? `OJ: Problem#${problem.id} · ${meta}` : `OJ: Problem#${problem.id}`;
-            this._view.webview.onDidReceiveMessage(msg => {
-                switch (msg.command) {
-                    case 'copy':
-                        vscode.env.clipboard.writeText(msg.text);
-                        vscode.window.showInformationMessage("OJ-Assistant: Sample input copied.");
-                        break;
-                    case 'run':
-                        break;
-                    case 'edit':
-                        vscode.commands.executeCommand('ojassist.data');
-                        break;
-                }
-            });
+            this.lastContent = problem.content;
+            this.lastProblemInfo = problemInfo;
+            this.isTranslated = false;
+            this.paintProblem(problemInfo, problem.content);
         }).catch((err: Error) => {
             if (seq !== this.renderSeq) { return; }
             console.error(err);
