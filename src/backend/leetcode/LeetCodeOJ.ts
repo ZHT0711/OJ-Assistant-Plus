@@ -101,6 +101,7 @@ export class LeetCodeOJ implements OJ {
     async login(): Promise<LeetCodeUser> {
         this.cookieJar = new CookieJar();
         this.axiosConfig = {
+            timeout: 15000,
             jar: this.cookieJar,
             withCredentials: true,
             headers: { 'User-Agent': LeetCodeOJ.browserUA },
@@ -403,7 +404,11 @@ export class LeetCodeOJ implements OJ {
                 JSON.stringify(response.data ?? '').slice(0, 300));
         }
 
-        return () => this.checkSubmission(submissionId, sourceFile, lang);
+        return Object.assign(() => this.checkSubmission(submissionId, sourceFile, lang), { submissionId: String(submissionId) });
+    }
+    resumeSubmission(recordId: string, sourceFile: SourceFile): Function {
+        const lang = String(sourceFile.languageOverride ?? defaultLanguages[sourceFile.sourceType] ?? sourceFile.sourceType);
+        return Object.assign(() => this.checkSubmission(recordId, sourceFile, lang), { submissionId: recordId });
     }
 
     private async checkSubmission(submissionId: any, sourceFile: SourceFile, lang: string): Promise<ProblemSubmit> {

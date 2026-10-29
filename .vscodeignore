@@ -14,3 +14,12 @@ smoke-test.js
 **/.eslintrc.json
 **/*.map
 **/*.ts
+
+# 以下内容不进入发布包
+docs/**
+scripts/**
+.github/**
+baidu.jar
+*.vsix
+# 未被引用的旧图标（实为 JPEG 改名），icon 已改用 assets/icon/87541216_p0.png
+assets/icon/512x512.png

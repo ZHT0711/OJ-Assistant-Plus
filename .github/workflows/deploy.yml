@@ -1,41 +1,44 @@
+name: Deploy Extension
+
 on:
   push:
     tags:
-    - 'v*'
-name: Deploy Extension
+      - 'v*'
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v2
-      - run: yarn
-      - name: Publish to VSM
-        uses: lannonbr/vsce-action@master
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          args: "publish -p $VSCE_TOKEN"
+          node-version: 24
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # PAT 通过 VSCE_PAT 环境变量注入（vsce 默认识别该变量）。
+      # 不要把 token 写进命令行参数，会泄漏到 CI 日志。
+      #
+      # ⚠️ Azure DevOps 的 global PAT 将于 2026-12-01 全部停用。
+      #    届时改用 Entra ID + 托管标识：
+      #      vsce publish --azure-credential
+      #    参见 https://code.visualstudio.com/api/working-with-extensions/publishing-extension#secure-automated-publishing-to-visual-studio-marketplace
+      - name: Publish to Visual Studio Marketplace
+        run: npx --yes @vscode/vsce publish --no-dependencies
         env:
-          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
-      - name: Package Extension
-        uses: lannonbr/vsce-action@master
-        with:
-          args: "package -o ./oj-assistant.vsix"
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Package extension
+        run: npx --yes @vscode/vsce package --no-dependencies -o ./oj-assistant-plus.vsix
+
+      - name: Create GitHub Release
+        run: gh release create "${GITHUB_REF_NAME}" ./oj-assistant-plus.vsix --title "Release ${GITHUB_REF_NAME}" --prerelease
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: true
-      - name: Upload Release Asset
-        id: upload-release-asset 
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./oj-assistant.vsix
-          asset_name: ./oj-assistant-${{ github.ref }}.vsix
-          asset_content_type: application/ocet-stream
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

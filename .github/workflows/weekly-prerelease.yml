@@ -1,0 +1,51 @@
+name: Weekly Preview Release
+
+on:
+  schedule:
+    # GitHub Actions cron 使用 UTC 时间。
+    # 每周日 07:00 北京时间（UTC+8）= 周六 23:00 UTC。
+    - cron: '0 23 * * 6'
+  # 手动触发入口（Actions 页面右上角 Run workflow）
+  workflow_dispatch:
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # 计算预览版版本号，如 0.8.0-preview.20261029
+      - name: Package extension
+        id: pkg
+        run: |
+          BASE=$(node -p "require('./package.json').version")
+          DATE=$(date +%Y%m%d)
+          TAG="preview-${BASE}-${DATE}"
+          FILE="oj-assistant-plus-${BASE}-preview.${DATE}.vsix"
+          npx --yes @vscode/vsce package --no-dependencies -o "./${FILE}"
+          {
+            echo "tag=${TAG}"
+            echo "file=${FILE}"
+            echo "date=$(date +%Y-%m-%d)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Preview Release
+        run: |
+          gh release create "${TAG}" "./${FILE}" \
+            --title "预览版 ${DATE}" \
+            --prerelease \
+            --notes "每周自动构建的预览版，由最新 main 分支生成，未经完整测试。安装方式：在 VSCode 中「扩展 → 从 VSIX 安装」选择该文件。"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

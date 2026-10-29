@@ -33,20 +33,32 @@ export function resolvePreferred(
 
 /** Map a language choice to a source-file extension. */
 export function languageFileExt(choice: LanguageChoice | undefined): string {
-    if (!choice) { return 'cpp'; }
+    return extensionForLanguage(choice) || 'cpp';
+}
+
+export function extensionForLanguage(choice: LanguageChoice | undefined): string | undefined {
+    if (!choice) { return undefined; }
     const value = String(choice.value).toLowerCase();
     const label = String(choice.label).toLowerCase();
     const byValue: { [k: string]: string } = {
         'c': 'c', 'gcc': 'c', 'cpp': 'cpp', 'c++': 'cpp', 'g++': 'cpp', 'cc': 'cpp',
         'java': 'java', 'python': 'py', 'python3': 'py', 'py': 'py', 'py3': 'py',
-        'javascript': 'js', 'node': 'js', 'typescript': 'ts', 'golang': 'go',
+        'javascript': 'js', 'node': 'js', 'typescript': 'ts', 'golang': 'go', 'go': 'go', 'rs': 'rs', 'cs': 'cs',
         'csharp': 'cs', 'c#': 'cs', 'kotlin': 'kt', 'swift': 'swift', 'rust': 'rs',
         'ruby': 'rb', 'php': 'php', 'scala': 'scala', 'pascal': 'pas', 'txt': 'txt',
     };
     if (byValue[value]) { return byValue[value]; }
+    const abbreviation = /^(cpp|cc|cxx|c|cs|py|py2|py3|js|ts|go|rs|java|txt)(?=\s|\(|$)/.exec(label.trim())?.[1];
+    if (abbreviation) {
+        const family: { [key: string]: string } = { cc: 'cpp', cxx: 'cpp', py2: 'py', py3: 'py' };
+        return family[abbreviation] || abbreviation;
+    }
     if (label.includes('python')) { return 'py'; }
-    if (label.includes('c++') || label.includes('g++') || label.includes('gcc')) { return 'cpp'; }
+    if (label.includes('c++') || label.includes('g++') || /\bcpp\b/.test(label)) { return 'cpp'; }
+    if (/^(?:gnu\s*)?c(?:\s|$|\d)|\bgcc\b/.test(label)) { return 'c'; }
     if (label.includes('c#')) { return 'cs'; }
+    if (label.includes('javascript') || label.includes('node')) { return 'js'; }
+    if (label.includes('typescript')) { return 'ts'; }
     if (label.includes('java')) { return 'java'; }
     if (label.includes('kotlin')) { return 'kt'; }
     if (label.includes('swift')) { return 'swift'; }
@@ -58,5 +70,5 @@ export function languageFileExt(choice: LanguageChoice | undefined): string {
     if (label.includes('go')) { return 'go'; }
     if (label.includes('script')) { return 'js'; }
     if (value === '1' && label.includes('g++')) { return 'cpp'; }
-    return 'cpp';
+    return undefined;
 }

@@ -10,6 +10,7 @@ export class ProblemSubmit {
     codelen!: number;
     date!: Date;
     result!: string;
+    details?: string;
 }
 export interface ProblemInfo {
     id: string;
@@ -43,10 +44,9 @@ export class SourceFile implements ProblemInfo {
     ) { }
 
     public get dataInputFile(): vscode.Uri {
-		if (this.contestId) {
-            return vscode.Uri.joinPath(vscode.workspace.getWorkspaceFolder(this.uri)!.uri, this.contestId, `${this.id}.in`);
-		} else {
-            return vscode.Uri.joinPath(vscode.workspace.getWorkspaceFolder(this.uri)!.uri, `${this.id}.in`);
-        }
+        // Code Runner reads $dirWithoutTrailingSlash/$fileNameWithoutExt.in.
+        // Keep the input beside the source, including contest/problem folders.
+        const stem = this.uri.path.split('/').pop()!.replace(/\.[^.]+$/, '');
+        return vscode.Uri.joinPath(this.uri, '..', `${stem}.in`);
     }
 }

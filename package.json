@@ -1,45 +1,107 @@
 {
 	"name": "oj-assistant-plus",
 	"displayName": "OJ Assistant Plus",
-	"description": "在 VS Code 里刷遍所有 OJ：洛谷 / 力扣 / NEU OJ / CSECG / HDOJ / Codeforces - 看题、测样例、一键交题",
-	"publisher": "ZHT0711",
+	"description": "账号题库 + 免登录链接刷题：题面解析、样例测试、网页提交，覆盖 Codeforces / 洛谷 / AtCoder 等平台",
+	"publisher": "skowosy",
 	"preview": false,
-	"version": "0.6.7",
+	"version": "0.8.0",
 	"license": "SEE LICENSE IN LICENSE",
-	"icon": "assets/icon/512x512.png",
+	"icon": "assets/icon/87541216_p0.png",
 	"engines": {
 		"vscode": "^1.53.0"
 	},
 	"categories": [
-		"Debuggers",
+		"Education",
 		"Other"
 	],
+	"keywords": [
+		"oj",
+		"online judge",
+		"competitive programming",
+		"刷题",
+		"算法",
+		"算法竞赛",
+		"洛谷",
+		"luogu",
+		"力扣",
+		"leetcode",
+		"codeforces",
+		"hdoj",
+		"杭电",
+		"neuoj",
+		"csecg",
+		"coursegrading",
+		"contest",
+		"ACM",
+		"ICPC",
+		"katex",
+		"submit"
+	],
 	"activationEvents": [
-		"workspaceContains:.ojassistconfig.json"
+		"workspaceContains:.ojassistconfig.json",
+		"onCommand:ojassist.submit",
+		"onCommand:ojassist.data",
+		"onCommand:ojassist.reload",
+		"onCommand:ojassist.webLogin",
+		"onCommand:ojassist.initWorkspace",
+		"onCommand:ojassist.searchProblems",
+		"onCommand:ojassist.refreshProblems",
+		"onCommand:ojassist.loadMoreProblems",
+		"onCommand:ojassist.openProblem",
+		"onCommand:ojassist.quickSubmit",
+		"onCommand:ojassist.openProblemInBrowser",
+		"onCommand:ojassist.pickLanguage",
+		"onCommand:ojassist.qqTranslateToken",
+		"onView:ojassistant.problems",
+		"onView:ojassistant.problemInfoView",
+		"onCommand:ojassist.importLink",
+		"onCommand:ojassist.importPracticeJson",
+		"onCommand:ojassist.openPractice",
+		"onCommand:ojassist.refreshPractice",
+		"onCommand:ojassist.searchPractice",
+		"onCommand:ojassist.runSamples",
+		"onCommand:ojassist.removePractice",
+		"onView:ojassistant.practice",
+		"workspaceContains:.oj-assistant/practice/*/problem.json",
+		"onCommand:ojassist.pickPracticeLanguage",
+		"onCommand:ojassist.checkPracticeTools",
+		"onCommand:ojassist.accountStatus",
+		"onCommand:ojassist.selectAccountWorkspace",
+		"onCommand:ojassist.runAccountSamples",
+		"onCommand:ojassist.accountTests",
+		"onCommand:ojassist.submissionHistory",
+		"onCommand:ojassist.resumeJudgement"
 	],
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/ZHT0711/OJ-Assistant-Plus"
 	},
+	"bugs": {
+		"url": "https://github.com/ZHT0711/OJ-Assistant-Plus/issues"
+	},
+	"homepage": "https://github.com/ZHT0711/OJ-Assistant-Plus#readme",
 	"badges": [
 		{
-			"url": "https://isitmaintained.com/badge/resolution/lss233/OJ-Assistant.svg",
-			"description": "Average time to resolve an issue",
-			"href": "https://github.com/lss233/oj-assistant/issues"
+			"url": "https://badgen.net/vs-marketplace/v/skowosy.oj-assistant-plus",
+			"href": "https://marketplace.visualstudio.com/items?itemName=skowosy.oj-assistant-plus",
+			"description": "Marketplace version"
 		},
 		{
-			"url": "https://isitmaintained.com/badge/open/lss233/OJ-Assistant.svg",
-			"description": "Percentage of issues still open",
-			"href": "https://github.com/lss233/oj-assistant"
+			"url": "https://img.shields.io/github/issues/ZHT0711/OJ-Assistant-Plus",
+			"href": "https://github.com/ZHT0711/OJ-Assistant-Plus/issues",
+			"description": "Open issues"
 		},
 		{
-			"url": "https://img.shields.io/github/workflow/status/lss233/oj-assistant/Deploy%20Extension",
-			"description": "Deploy Workflow",
-			"href": "https://github.com/lss233/oj-assistant"
+			"url": "https://img.shields.io/github/license/ZHT0711/OJ-Assistant-Plus",
+			"href": "https://github.com/ZHT0711/OJ-Assistant-Plus/blob/main/LICENSE",
+			"description": "License"
 		}
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
+		"jsonValidation": [
+			{ "fileMatch": ".ojassistconfig.json", "url": "./schemas/ojassistconfig.schema.json" }
+		],
 		"views": {
 			"explorer": [
 				{
@@ -51,14 +113,18 @@
 			"ojassistant": [
 				{
 					"id": "ojassistant.problems",
-					"name": "题库"
+					"name": "账号题库"
+				},
+				{
+					"id": "ojassistant.practice",
+					"name": "链接刷题 · 免登录"
 				}
 			]
 		},
 		"commands": [
 			{
 				"command": "ojassist.submit",
-				"title": "OJ-Assist: Submit this code"
+				"title": "OJ Assistant: 提交当前代码"
 			},
 			{
 				"command": "ojassist.data",
@@ -78,11 +144,13 @@
 			},
 			{
 				"command": "ojassist.searchProblems",
-				"title": "搜索题目"
+				"title": "搜索题目",
+				"icon": "$(search)"
 			},
 			{
 				"command": "ojassist.refreshProblems",
-				"title": "刷新题库"
+				"title": "刷新题库",
+				"icon": "$(refresh)"
 			},
 			{
 				"command": "ojassist.loadMoreProblems",
@@ -107,6 +175,79 @@
 			{
 				"command": "ojassist.qqTranslateToken",
 				"title": "OJ-Assistant: 获取腾讯翻译Token"
+			},
+			{
+				"command": "ojassist.importLink",
+				"title": "OJ Assistant: 粘贴题目 / 比赛链接",
+				"icon": "$(link)"
+			},
+			{
+				"command": "ojassist.importPracticeJson",
+				"title": "OJ Assistant: 手动导入 / Competitive Companion JSON"
+			},
+			{
+				"command": "ojassist.openPractice",
+				"title": "OJ Assistant: 打开链接题目"
+			},
+			{
+				"command": "ojassist.refreshPractice",
+				"title": "OJ Assistant: 刷新链接题目",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "ojassist.searchPractice",
+				"title": "OJ Assistant: 搜索链接题目",
+				"icon": "$(search)"
+			},
+			{
+				"command": "ojassist.runSamples",
+				"title": "OJ Assistant: 运行链接题目的全部样例",
+				"icon": "$(play)"
+			},
+			{
+				"command": "ojassist.removePractice",
+				"title": "OJ Assistant: 从链接列表移除（保留代码）",
+				"icon": "$(close)"
+			},
+			{
+				"command": "ojassist.pickPracticeLanguage",
+				"title": "OJ Assistant: 选择链接刷题语言",
+				"icon": "$(symbol-enum)"
+			},
+			{
+				"command": "ojassist.checkPracticeTools",
+				"title": "OJ Assistant: 检查链接刷题编译环境",
+				"icon": "$(tools)"
+			},
+			{
+				"command": "ojassist.accountStatus",
+				"title": "OJ Assistant: 查看账号状态 / 重新登录",
+				"icon": "$(account)"
+			},
+			{
+				"command": "ojassist.selectAccountWorkspace",
+				"title": "OJ Assistant: 切换账号题库工作区",
+				"icon": "$(folder-opened)"
+			},
+			{
+				"command": "ojassist.runAccountSamples",
+				"title": "OJ Assistant: 运行账号题目的全部样例",
+				"icon": "$(play)"
+			},
+			{
+				"command": "ojassist.accountTests",
+				"title": "OJ Assistant: 账号样例与自定义测试",
+				"icon": "$(beaker)"
+			},
+			{
+				"command": "ojassist.submissionHistory",
+				"title": "OJ Assistant: 查看账号提交历史",
+				"icon": "$(history)"
+			},
+			{
+				"command": "ojassist.resumeJudgement",
+				"title": "OJ Assistant: 继续查询账号评测",
+				"icon": "$(sync)"
 			}
 		],
 		"viewsContainers": {
@@ -129,11 +270,178 @@
 					"command": "ojassist.refreshProblems",
 					"when": "view == ojassistant.problems",
 					"group": "navigation@3"
+				},
+				{
+					"command": "ojassist.importLink",
+					"when": "view == ojassistant.practice",
+					"group": "navigation@0"
+				},
+				{
+					"command": "ojassist.searchPractice",
+					"when": "view == ojassistant.practice",
+					"group": "navigation@1"
+				},
+				{
+					"command": "ojassist.refreshPractice",
+					"when": "view == ojassistant.practice",
+					"group": "navigation@2"
+				},
+				{
+					"command": "ojassist.pickPracticeLanguage",
+					"when": "view == ojassistant.practice",
+					"group": "navigation@3"
+				},
+				{
+					"command": "ojassist.accountStatus",
+					"when": "view == ojassistant.problems",
+					"group": "navigation@4"
+				},
+				{
+					"command": "ojassist.runAccountSamples",
+					"when": "view == ojassistant.problems",
+					"group": "navigation@5"
+				},
+				{
+					"command": "ojassist.submissionHistory",
+					"when": "view == ojassistant.problems",
+					"group": "navigation@6"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "ojassist.removePractice",
+					"when": "view == ojassistant.practice && viewItem == practiceProblem",
+					"group": "inline"
+				},
+				{
+					"command": "ojassist.pickPracticeLanguage",
+					"when": "view == ojassistant.practice && viewItem == practiceProblem",
+					"group": "practice@1"
+				},
+				{
+					"command": "ojassist.checkPracticeTools",
+					"when": "view == ojassistant.practice && viewItem == practiceProblem",
+					"group": "practice@1"
 				}
 			]
+		},
+		"viewsWelcome": [
+			{
+				"view": "ojassistant.problems",
+				"contents": "使用平台账号浏览题库、作业和在线提交。\n[初始化账号工作区](command:ojassist.initWorkspace)\n无需账号？展开下方“链接刷题”。"
+			}
+		],
+		"configuration": {
+			"title": "OJ Assistant",
+			"properties": {
+				"ojassist.practice.language": {
+					"type": "string",
+					"enum": [
+						"cpp",
+						"c",
+						"py",
+						"js",
+						"java",
+						"go",
+						"rs"
+					],
+					"default": "cpp",
+					"description": "新导入题目的默认语言；侧栏与题面均可切换，已有题目优先使用自身记忆的语言。各语言代码独立保留。",
+					"enumDescriptions": [
+						"C++ 17",
+						"C 11",
+						"Python 3",
+						"JavaScript (Node.js)",
+						"Java (Main)",
+						"Go",
+						"Rust 2021"
+					],
+					"scope": "resource"
+				},
+				"ojassist.practice.cppCompiler": {
+					"type": "string",
+					"default": "g++",
+					"scope": "resource",
+					"description": "g++ 命令或可执行文件的完整路径，无需添加引号。"
+				},
+				"ojassist.practice.cCompiler": {
+					"type": "string",
+					"default": "gcc",
+					"scope": "resource",
+					"description": "gcc 命令或可执行文件的完整路径，无需添加引号。"
+				},
+				"ojassist.practice.pythonCommand": {
+					"type": "string",
+					"default": "python",
+					"scope": "resource",
+					"description": "python 命令或可执行文件的完整路径，无需添加引号。"
+				},
+				"ojassist.practice.timeLimit": {
+					"type": "number",
+					"default": 2,
+					"minimum": 0.1,
+					"maximum": 60,
+					"description": "每个测试的运行时间限制（秒）。不限制内存。"
+				},
+				"ojassist.practice.nodeCommand": {
+					"type": "string",
+					"default": "node",
+					"scope": "resource",
+					"description": "node 命令或可执行文件的完整路径，无需添加引号。"
+				},
+				"ojassist.practice.javaCompiler": {
+					"type": "string",
+					"default": "javac",
+					"scope": "resource",
+					"description": "javac 命令或可执行文件的完整路径，无需添加引号。"
+				},
+				"ojassist.practice.javaCommand": {
+					"type": "string",
+					"default": "java",
+					"scope": "resource",
+					"description": "java 命令或可执行文件的完整路径，无需添加引号。"
+				},
+				"ojassist.practice.goCommand": {
+					"type": "string",
+					"default": "go",
+					"scope": "resource",
+					"description": "go 命令或可执行文件的完整路径，无需添加引号。"
+				},
+				"ojassist.practice.rustCompiler": {
+					"type": "string",
+					"default": "rustc",
+					"scope": "resource",
+					"description": "rustc 命令或可执行文件的完整路径，无需添加引号。"
+				},
+				"ojassist.account.uploadTimeout": {
+					"type": "number",
+					"default": 30,
+					"minimum": 1,
+					"maximum": 600,
+					"scope": "resource",
+					"description": "上传操作的等待时限（秒）。超时后上传结果可能仍未确认，不会自动重新提交。"
+				},
+				"ojassist.account.judgementTimeout": {
+					"type": "number",
+					"default": 120,
+					"minimum": 1,
+					"maximum": 600,
+					"scope": "resource",
+					"description": "每次等待评测的总时限（秒），停止等待后可继续查询。"
+				},
+				"ojassist.account.requestTimeout": {
+					"type": "number",
+					"default": 15,
+					"minimum": 1,
+					"maximum": 600,
+					"scope": "resource",
+					"description": "单次评测查询等待时限（秒）。超时的在途查询会被保留以便继续等待。"
+				}
+			}
 		}
 	},
 	"scripts": {
+		"test:practice": "npm run test-compile && mocha --ui tdd out/test/suite/practice.test.js out/test/suite/practiceLanguages.test.js out/test/suite/csecgVerdict.test.js",
 		"vscode:prepublish": "node scripts/copy-katex.js && yarn run package",
 		"compile": "node --openssl-legacy-provider ./node_modules/webpack/bin/webpack.js --config ./build/node-extension.webpack.config.js",
 		"watch": "node --openssl-legacy-provider ./node_modules/webpack/bin/webpack.js --watch --config ./build/node-extension.webpack.config.js",
@@ -142,7 +450,9 @@
 		"test-watch": "tsc -watch -p ./",
 		"pretest": "yarn run test-compile && yarn run lint",
 		"lint": "eslint src --ext ts",
-		"test": "node ./out/test/runTest.js"
+		"test": "node ./out/test/runTest.js",
+		"test:account": "npm run test-compile && mocha --ui tdd out/test/suite/account.test.js out/test/suite/csecgVerdict.test.js",
+		"test:core": "npm run test-compile && mocha --ui tdd out/test/suite/platforms.test.js out/test/suite/account.test.js out/test/suite/practice.test.js out/test/suite/practiceLanguages.test.js out/test/suite/csecgVerdict.test.js"
 	},
 	"devDependencies": {
 		"@types/glob": "^7.1.3",

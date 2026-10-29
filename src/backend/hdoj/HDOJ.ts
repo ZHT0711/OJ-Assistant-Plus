@@ -77,6 +77,7 @@ export class HDOJ implements OJ {
     async login(): Promise<HDOJUser> {
         this.cookieJar = new CookieJar();
         this.axiosConfig = {
+            timeout: 15000,
             jar: this.cookieJar,
             withCredentials: true,
             headers: { 'User-Agent': browserUA },

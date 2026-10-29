@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import { ojServer, config } from '../extension';
+import { adapterFor } from '../backend';
 import { getPreferredLanguage, languageFileExt } from '../utils/languageState';
 import { ProblemListEntry } from '../model';
+import { accounts, isAuthenticationError } from '../account/session';
+import { SubmissionRecord } from '../account/submissions';
+import { languageById } from '../practice/languages';
 
 /** Node of the problem browser tree. */
 export class ProblemNode {
@@ -11,7 +14,7 @@ export class ProblemNode {
         public readonly label: string,
         public readonly difficulty: string | undefined,
         public readonly entry?: ProblemListEntry,
-        public readonly kind?: 'hint' | 'loading' | 'more' | 'action-submit' | 'action-browser' | 'action-language' | 'group',
+        public readonly kind?: 'hint' | 'loading' | 'more' | 'action-submit' | 'action-browser' | 'action-language' | 'action-init' | 'action-account' | 'action-tests' | 'action-history' | 'action-resume' | 'group',
         /** For 'group' nodes: the assignment id whose problems it contains. */
         public readonly groupId?: string,
     ) { }
@@ -36,6 +39,39 @@ export class ProblemTreeProvider implements vscode.TreeDataProvider<ProblemNode>
     private lastError = '';
     private initRetries = 0;
     private retryTimer: ReturnType<typeof setTimeout> | undefined;
+    private requestSeq = 0;
+    private sessionStamp = '';
+    private verdicts = new Map<string, SubmissionRecord>();
+    constructor() {
+        accounts.onDidChange(session => {
+            if (session !== accounts.current) { return; }
+            const stamp = [session?.root.toString(), session?.generation, session?.state].join('|');
+            if (stamp !== this.sessionStamp) {
+                this.sessionStamp = stamp; this.requestSeq++; this.entries = []; this.page = 1; this.keyword = '';
+                this.loading = false; this.initialized = false; this.hasMore = false; this.lastError = ''; this.verdicts.clear();
+            }
+            this.refresh();
+        });
+    }
+    applyVerdict(record: SubmissionRecord): void {
+        const session = accounts.current;
+        if (record.sessionKey !== session?.key) { return; }
+        this.verdicts.set(`${record.contestId || ''}|${record.problemId}`, record);
+        this.refresh();
+    }
+    private actions(): ProblemNode[] {
+        const session = accounts.current;
+        const labels: { [key: string]: string } = { loading: '登录中…', ready: '已登录', expired: '需要重新登录', error: '连接失败', unconfigured: '未配置', untrusted: '工作区未信任' };
+        return [
+            new ProblemNode(`${session?.config?.backend || '账号'} · ${session?.username || ''} · ${labels[session?.state || 'unconfigured']}`, session?.message, undefined, 'action-account'),
+            ...(session?.state === 'ready' ? [new ProblemNode(formatLanguageLabel(), undefined, undefined, 'action-language'),
+                new ProblemNode('运行当前题目全部样例', undefined, undefined, 'action-tests'),
+                new ProblemNode('⬆️  提交当前题目', undefined, undefined, 'action-submit'),
+                new ProblemNode('查看提交历史', undefined, undefined, 'action-history'),
+                new ProblemNode('继续查询评测', undefined, undefined, 'action-resume'),
+                new ProblemNode('🌐  在浏览器打开当前题目', undefined, undefined, 'action-browser')] : []),
+        ];
+    }
 
     refresh(): void {
         this._onDidChangeTreeData.fire(undefined);
@@ -55,29 +91,38 @@ export class ProblemTreeProvider implements vscode.TreeDataProvider<ProblemNode>
     }
 
     async loadMore(): Promise<void> {
+        if (this.loading || !this.hasMore) { return; }
         this.page += 1;
         await this.loadPage(true);
     }
 
     private async loadPage(append: boolean): Promise<void> {
-        if (typeof ojServer?.searchProblems !== 'function') {
+        const session = accounts.current;
+        const server = session?.state === 'ready' ? session.server : undefined;
+        if (!server || typeof server.searchProblems !== 'function') {
             this.refresh();
             return;
         }
         this.loading = true;
+        const seq = ++this.requestSeq;
         this.refresh();
         try {
-            const result = await ojServer.searchProblems!(this.keyword, this.page);
+            const result = await server.searchProblems!(this.keyword, this.page);
+            if (seq !== this.requestSeq || server !== accounts.current?.server) { return; }
             this.entries = append ? this.entries.concat(result.problems) : result.problems;
             this.hasMore = result.hasMore;
             this.lastError = '';
         } catch (err: any) {
+            if (seq !== this.requestSeq || server !== accounts.current?.server) { return; }
+            if (isAuthenticationError(err) && accounts.current) { accounts.change(accounts.current, 'expired', '登录已过期，请重新登录后刷新题库'); return; }
             this.lastError = String(err?.message ?? err);
             vscode.window.showErrorMessage(`OJ-Assistant: 加载题库失败: ${this.lastError}`);
         } finally {
-            this.loading = false;
-            this.initialized = true;
-            this.refresh();
+            if (seq === this.requestSeq) {
+                this.loading = false;
+                this.initialized = true;
+                this.refresh();
+            }
         }
     }
 
@@ -85,23 +130,26 @@ export class ProblemTreeProvider implements vscode.TreeDataProvider<ProblemNode>
         if (element?.kind === 'group' && element.groupId !== undefined) {
             return this.getChildrenForGroup(element.groupId);
         }
-        if (ojServer === undefined) {
+        const session = accounts.current;
+        if (!session || session.state !== 'ready' || !session.server) {
             // Activation reads the config asynchronously - retry until the
             // backend instance exists, then the first page loads by itself.
             this.scheduleInitRetry();
-            return [new ProblemNode('插件初始化中，稍候自动加载题库...', undefined, undefined, 'hint')];
+            return [...this.actions(), new ProblemNode('初始化账号工作区 / 登录平台', undefined, undefined, 'action-init'),
+                new ProblemNode('免登录请使用下方“链接刷题”', undefined, undefined, 'hint')];
         }
-        if (typeof ojServer.searchProblems !== 'function') {
-            const backend = (config as any)?.backend ?? '?';
-            return [new ProblemNode(`平台 ${backend} 暂不支持在线搜题，请手动按命名规则新建题目文件`, undefined, undefined, 'hint')];
+        const server = session.server;
+        if (typeof server.searchProblems !== 'function') {
+            const backend = session.config?.backend ?? '?';
+            return [...this.actions(), new ProblemNode(`平台 ${backend} 暂不支持在线搜题，请手动按命名规则新建题目文件`, undefined, undefined, 'hint')];
         }
         // Auto-load the first page as soon as the panel is opened.
         if (!this.initialized) {
             if (!this.loading) { void this.loadPage(false); }
-            return [new ProblemNode('正在加载题库...', undefined, undefined, 'loading')];
+            return [...this.actions(), new ProblemNode('正在加载题库...', undefined, undefined, 'loading')];
         }
         if (this.loading && this.entries.length === 0) {
-            return [new ProblemNode('加载中...', undefined, undefined, 'loading')];
+            return [...this.actions(), new ProblemNode('加载中...', undefined, undefined, 'loading')];
         }
         if (this.entries.length === 0) {
             const hint = this.lastError
@@ -112,17 +160,13 @@ export class ProblemTreeProvider implements vscode.TreeDataProvider<ProblemNode>
             // Quick actions stay visible even here - the browser button is
             // exactly the escape hatch needed when loading fails.
             return [
-                new ProblemNode(formatLanguageLabel(), undefined, undefined, 'action-language'),
-                new ProblemNode('⬆️  提交当前题目', undefined, undefined, 'action-submit'),
-                new ProblemNode('🌐  在浏览器打开当前题目', undefined, undefined, 'action-browser'),
+                ...this.actions(),
                 new ProblemNode(hint, undefined, undefined, 'hint'),
             ];
         }
         const nodes: ProblemNode[] = [
             // Pinned quick actions (no command arguments - see getTreeItem).
-            new ProblemNode(formatLanguageLabel(), undefined, undefined, 'action-language'),
-            new ProblemNode('⬆️  提交当前题目', undefined, undefined, 'action-submit'),
-            new ProblemNode('🌐  在浏览器打开当前题目', undefined, undefined, 'action-browser'),
+            ...this.actions(),
         ];
 
         const grouped = this.entries.length > 0 && this.entries.every(e => e.contestId !== undefined);
@@ -179,18 +223,28 @@ export class ProblemTreeProvider implements vscode.TreeDataProvider<ProblemNode>
             return item;
         }
         if (node.entry) {
+            const recent = this.verdicts.get(`${node.entry.contestId || ''}|${node.entry.id}`);
             // MUST be unique across the whole tree: every assignment has a
             // "problem 1", and VS Code aliases tree nodes by id - a bare
             // `p:1` made clicking 3897's #1 open 3885's #1 instead.
             item.id = `p:${node.entry.contestId ?? '-'}:${node.entry.id}`;
             item.tooltip = `${node.entry.id} - ${node.entry.title}`;
             item.description = describeEntry(node.entry);
+            if (recent?.verdict) { item.description = `${recent.verdict.result === 'Accepted' ? '✓ 已AC' : recent.verdict.result} · ${item.description || ''}`; }
             // NOTE: intentionally NO arguments - VS Code routes commands with
             // arguments through CommandsConverter, whose per-item cache is
             // wiped on every tree refresh, breaking all clicks. The handler
             // reads TreeView.selection instead.
             item.command = { command: 'ojassist.openProblem', title: 'Open problem' };
             item.iconPath = new vscode.ThemeIcon('file-code');
+        } else if (['action-account', 'action-tests', 'action-history', 'action-resume'].includes(node.kind || '')) {
+            const commands: any = { 'action-account': 'ojassist.accountStatus', 'action-tests': 'ojassist.runAccountSamples', 'action-history': 'ojassist.submissionHistory', 'action-resume': 'ojassist.resumeJudgement' };
+            item.command = { command: commands[node.kind!], title: node.label };
+            item.iconPath = new vscode.ThemeIcon(node.kind === 'action-account' ? 'account' : node.kind === 'action-tests' ? 'play' : 'history');
+            if (node.kind === 'action-account') { item.tooltip = accounts.current?.message || node.label; }
+        } else if (node.kind === 'action-init') {
+            item.command = { command: 'ojassist.initWorkspace', title: '初始化账号工作区' };
+            item.iconPath = new vscode.ThemeIcon('account');
         } else if (node.kind === 'action-language') {
             item.command = { command: 'ojassist.pickLanguage', title: 'Choose language' };
             item.iconPath = new vscode.ThemeIcon('symbol-enum');
@@ -234,38 +288,20 @@ public:
 
 /** Create (if needed) and open the solution file for a problem. */
 export async function openProblemFile(entry: ProblemListEntry): Promise<void> {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
+    const session = accounts.current;
+    if (!session?.server || session.state !== 'ready') {
         vscode.window.showErrorMessage('OJ-Assistant: 请先打开一个工作区文件夹。');
         return;
     }
-    const backend = (config as any)?.backend ?? 'luogu';
+    const backend = session.config?.backend || 'luogu';
+    const adapter = adapterFor(backend);
     // Extension + template follow the language chosen in the panel (if any).
     const ext = languageFileExt(getPreferredLanguage());
-    const template = backend === 'leetcode' && ext === 'cpp'
+    const template = adapter?.id === 'leetcode' && ext === 'cpp'
         ? leetcodeTemplate
         : templateForExtension(ext);
-    let relative: string;
-    switch (backend) {
-        case 'leetcode':
-        case 'neuoj':
-        case 'hdoj':
-        case 'hduoj':
-        case 'hnuacm':
-        case 'hnu-acm':
-            relative = path.join('problems', `${entry.id}.${ext}`);
-            break;
-        case 'csecg':
-        case 'hnucg':
-        case 'hnu-cg':
-            relative = path.join('a', String(entry.contestId ?? '0'), `${entry.id}.${ext}`);
-            break;
-        default:
-            // luogu: P1001.py in the workspace root; anything else keeps id as-is.
-            relative = `${entry.id}.${ext}`;
-            break;
-    }
-    const fileUri = vscode.Uri.joinPath(folder.uri, relative);
+    const relative = adapter ? adapter.solutionPath(entry, ext) : `${entry.id}.${ext}`;
+    const fileUri = vscode.Uri.joinPath(session.root, relative);
     try {
         await fs.stat(fileUri.fsPath);
     } catch {
@@ -344,6 +380,8 @@ function formatLanguageLabel(): string {
 
 /** Source template per language family (used when creating a solution file). */
 export function templateForExtension(ext: string): string {
+    const registered = languageById(ext);
+    if (registered) { return registered.template.replace('cin.tie(nullptr)', 'cin.tie(0)'); }
     if (ext === 'java') {
         return ['import java.util.*;',
             'import java.io.*;',

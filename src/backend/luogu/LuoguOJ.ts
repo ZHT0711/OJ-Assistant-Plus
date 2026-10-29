@@ -91,6 +91,7 @@ export class LuoguOJ implements OJ {
     async login(): Promise<LuoguUser> {
         this.cookieJar = new CookieJar();
         this.axiosConfig = {
+            timeout: 15000,
             jar: this.cookieJar,
             withCredentials: true,
             headers: {
@@ -325,7 +326,11 @@ export class LuoguOJ implements OJ {
                 JSON.stringify(response.data).slice(0, 300));
         }
 
-        return () => this.pollRecord(recordId, sourceFile, lang);
+        return Object.assign(() => this.pollRecord(recordId, sourceFile, lang), { submissionId: String(recordId) });
+    }
+    resumeSubmission(recordId: string, sourceFile: SourceFile): Function {
+        const lang = Number(sourceFile.languageOverride ?? defaultLanguages[sourceFile.sourceType]);
+        return Object.assign(() => this.pollRecord(recordId, sourceFile, lang), { submissionId: recordId });
     }
 
     private pickLanguage(extension: string, acceptLanguages: number[]): number {

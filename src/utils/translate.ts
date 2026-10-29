@@ -4,8 +4,9 @@ import { createHash, createHmac, randomBytes } from 'crypto';
 /**
  * Multi-provider translation for problem statements (auto -> Chinese).
  *
- * Providers (all verified reachable from CN unless noted):
- *  - google    : translate.googleapis.com gtx endpoint, keyless  [primary]
+ * Providers:
+ *  - microsoft : Edge translation endpoint, keyless [default]
+ *  - google    : translate.googleapis.com gtx endpoint, keyless
  *  - tencent   : fanyi.qq.com web API with a saved Token (from a browser
  *                captcha exchange - see command "获取腾讯翻译Token"),
  *                or the official TMT API when secretId/secretKey configured.
@@ -15,7 +16,7 @@ import { createHash, createHmac, randomBytes } from 'crypto';
  *
  * Config (.ojassistconfig.json):
  *   "translation": {
- *     "provider": "auto" | "google" | "tencent" | "youdao" | "mymemory",
+ *     "provider": "auto" | "microsoft" | "google" | "tencent" | "youdao" | "mymemory",
  *     "tencentWebToken": "<from browser command>",
  *     "youdao":     { "appKey": "...", "appSecret": "..." },
  *     "tencent":    { "secretId": "...", "secretKey": "..." }
@@ -38,6 +39,17 @@ function sha256hex(data: string | Buffer): string {
 }
 
 // ---------------------------------------------------------------- google gtx
+
+async function microsoftTranslate(text: string): Promise<string> {
+    const response = await axios.post('https://edge.microsoft.com/translate/translatetext', [text], {
+        params: { from: '', to: 'zh-Hans', isEnterpriseClient: false },
+        headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
+        timeout: 20000,
+    });
+    const translated = response.data?.[0]?.translations?.[0]?.text;
+    if (typeof translated !== 'string' || !translated) { throw new Error('Microsoft: invalid translation response'); }
+    return translated;
+}
 
 async function googleTranslate(text: string): Promise<string> {
     const response = await axios.get('https://translate.googleapis.com/translate_a/single', {
@@ -246,6 +258,10 @@ async function translateVia(text: string, opts: TranslateOptions): Promise<strin
     const push = (fn: () => Promise<string>) => { tryOrder.push(fn); };
 
     switch (provider) {
+        case 'microsoft':
+        case 'bing':
+            push(() => microsoftTranslate(text));
+            break;
         case 'google':
             push(() => googleTranslate(text));
             break;
@@ -286,9 +302,9 @@ async function translateVia(text: string, opts: TranslateOptions): Promise<strin
         case 'mymemory':
             push(() => myMemoryTranslate(text));
             break;
-        default: // auto: configured domestic channels first, then google, then mymemory
+        default: // auto: keyless Edge first, then configured providers and fallbacks
+            push(() => microsoftTranslate(text));
             if (bd?.appId && bd?.secretKey) { push(() => baiduOfficial(text, bd.appId!, bd.secretKey!)); }
-            if (opts.tencentWebToken) { push(() => tencentWeb(text, opts.tencentWebToken!)); }
             if (yd?.appKey && yd?.appSecret) { push(() => youdaoOfficial(text, yd.appKey!, yd.appSecret!)); }
             if (cy?.token) { push(() => caiyunTranslate(text, cy.token!)); }
             if (tc?.secretId && tc?.secretKey) { push(() => tencentOfficial(text, tc.secretId!, tc.secretKey!)); }

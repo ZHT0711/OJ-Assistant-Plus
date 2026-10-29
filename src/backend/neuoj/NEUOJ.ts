@@ -85,6 +85,7 @@ export class NEUOJ implements OJ {
     async login(): Promise<NEUOJUser> {
         this.cookieJar = new CookieJar();
         this.axiosConfig = {
+            timeout: 15000,
             jar: this.cookieJar,
             withCredentials: true,
             headers: {
@@ -429,7 +430,10 @@ export class NEUOJ implements OJ {
             );
         }
 
-        return () => this.pollSubmission(submissionId, sourceFile);
+        return Object.assign(() => this.pollSubmission(submissionId, sourceFile), { submissionId: String(submissionId) });
+    }
+    resumeSubmission(recordId: string, sourceFile: SourceFile): Function {
+        return Object.assign(() => this.pollSubmission(recordId, sourceFile), { submissionId: recordId });
     }
 
     /**

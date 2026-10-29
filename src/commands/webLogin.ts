@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as os from 'os';
 import { promises as fs } from 'fs';
-import axios from 'axios';
+import { accounts } from '../account/session';
+import { safeMessage } from '../account/credentials';
+import { adapterFor, platformAdapters } from '../backend';
+import type { LoginSpec } from '../backend';
+import { browserUA } from '../backend/platforms';
 
 // puppeteer-core is kept as a webpack external so its .d.ts (too new for our
 // TypeScript) is never parsed; require() gives us an untyped handle.
@@ -25,173 +28,28 @@ const puppeteer = require('puppeteer-core');
  * a single click.
  */
 
-interface PlatformSpec {
-    /** Page that shows the login form. */
-    loginUrl: string;
-    /** Suffix used to filter cookies belonging to this platform. */
-    domainSuffix: string;
-    /** Cheap cookie-level check (evaluated every polling tick). */
-    cookieCheck(cookies: { [k: string]: string }): boolean;
-    /**
-     * Optional HTTP verification with the harvested cookies - needed where a
-     * session cookie is issued before login (NEU OJ, CSECG).
-     */
-    probe?(cookieHeader: string): Promise<boolean>;
-}
-
-const browserUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-const platforms: { [backend: string]: PlatformSpec } = {
-    luogu: {
-        loginUrl: 'https://www.luogu.com.cn/auth/login',
-        domainSuffix: 'luogu.com.cn',
-        // `_uid` is present but "0" while anonymous.
-        cookieCheck: c => !!c['_uid'] && c['_uid'] !== '0',
-    },
-    leetcode: {
-        loginUrl: 'https://leetcode.cn/accounts/login',
-        domainSuffix: 'leetcode.cn',
-        cookieCheck: c => !!c['LEETCODE_SESSION'],
-        probe: async cookie => {
-            const response = await axios.post('https://leetcode.cn/graphql/noj-go',
-                { query: 'query userStatus { userStatus { isSignedIn username } }' },
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'User-Agent': browserUA,
-                        'Origin': 'https://leetcode.cn',
-                        'Referer': 'https://leetcode.cn/',
-                        'Cookie': cookie,
-                    },
-                    timeout: 20000,
-                    validateStatus: () => true,
-                });
-            return response.data?.data?.userStatus?.isSignedIn === true;
-        },
-    },
-    neuoj: {
-        loginUrl: 'https://oj.neu.edu.cn/login',
-        domainSuffix: 'oj.neu.edu.cn',
-        // Session cookie exists before logging in, so always probe.
-        cookieCheck: c => !!c['f_onlinejudge_session'],
-        probe: async cookie => {
-            const response = await axios.get('https://oj.neu.edu.cn/problems/data?page=1&per_page=1', {
-                headers: { 'User-Agent': browserUA, 'Cookie': cookie },
-                timeout: 20000,
-                maxRedirects: 0,
-                validateStatus: () => true,
-            });
-            return response.status === 200;
-        },
-    },
-    hdoj: {
-        loginUrl: 'http://acm.hdu.edu.cn/',
-        domainSuffix: 'acm.hdu.edu.cn',
-        // PHPSESSID exists before logging in too -> verify server-side.
-        cookieCheck: c => !!c['PHPSESSID'],
-        probe: async cookie => {
-            const response = await axios.get('http://acm.hdu.edu.cn/', {
-                headers: { 'User-Agent': browserUA, 'Cookie': cookie },
-                timeout: 20000,
-                responseType: 'arraybuffer',
-                validateStatus: () => true,
-            });
-            const text = new TextDecoder('gb18030').decode(new Uint8Array(response.data));
-            // Logged-in homepage carries the logout link.
-            return /action=logout/i.test(text);
-        },
-    },
-    csecg: {
-        loginUrl: 'http://neucsecg.neu.edu.cn/',
-        domainSuffix: 'neucsecg.neu.edu.cn',
-        // JSESSIONID is issued before logging in, so always probe.
-        cookieCheck: c => !!c['JSESSIONID'],
-        probe: async cookie => {
-            const response = await axios.get('http://neucsecg.neu.edu.cn/assignment/', {
-                headers: { 'User-Agent': browserUA, 'Accept': 'text/html', 'Cookie': cookie },
-                timeout: 20000,
-                maxRedirects: 0,
-                validateStatus: () => true,
-            });
-            // Unauthenticated visits answer 302, and established-but-guest
-            // sessions answer 200 with an EMPTY body - only a real login
-            // serves the (large) SPA shell. Content length is the tell.
-            if (response.status < 200 || response.status >= 300) { return false; }
-            const body = typeof response.data === 'string' ? response.data : String(response.data ?? '');
-            return body.length > 500;
-        },
-    },
-    hnuacm: {
-        loginUrl: 'http://acm.hnu.edu.cn/online/?action=form&type=login',
-        domainSuffix: 'acm.hnu.edu.cn',
-        // JSESSIONID exists for guests too; verify that the submit page no
-        // longer contains the legacy login form before saving it.
-        cookieCheck: c => !!c['JSESSIONID'],
-        probe: async cookie => {
-            const response = await axios.get('http://acm.hnu.edu.cn/online/?action=form&type=submitproblem', {
-                headers: { 'User-Agent': browserUA, 'Cookie': cookie, 'Accept': 'text/html' },
-                timeout: 20000,
-                validateStatus: () => true,
-            });
-            const body = String(response.data ?? '');
-            return response.status === 200 && !/Your Login Information|name=["']userid["']/i.test(body);
-        },
-    },
-    'hnu-acm': {
-        loginUrl: 'http://acm.hnu.edu.cn/online/?action=form&type=login',
-        domainSuffix: 'acm.hnu.edu.cn',
-        cookieCheck: c => !!c['JSESSIONID'],
-        probe: async cookie => {
-            const response = await axios.get('http://acm.hnu.edu.cn/online/?action=form&type=submitproblem', {
-                headers: { 'User-Agent': browserUA, 'Cookie': cookie, 'Accept': 'text/html' }, timeout: 20000, validateStatus: () => true,
-            });
-            return response.status === 200 && !/Your Login Information|name=["']userid["']/i.test(String(response.data ?? ''));
-        },
-    },
-    hnucg: {
-        loginUrl: 'https://cg.hnu.edu.cn/indexcs/simple.jsp?loginErr=0',
-        domainSuffix: 'cg.hnu.edu.cn',
-        cookieCheck: c => !!c['JSESSIONID'],
-        probe: async cookie => {
-            const response = await axios.get('https://cg.hnu.edu.cn/assignment/', {
-                headers: { 'User-Agent': browserUA, 'Cookie': cookie, 'Accept': 'text/html' },
-                timeout: 20000, maxRedirects: 0, validateStatus: () => true,
-            });
-            const body = String(response.data ?? '');
-            return response.status === 200 && body.length > 500;
-        },
-    },
-    'hnu-cg': {
-        loginUrl: 'https://cg.hnu.edu.cn/indexcs/simple.jsp?loginErr=0',
-        domainSuffix: 'cg.hnu.edu.cn',
-        cookieCheck: c => !!c['JSESSIONID'],
-        probe: async cookie => {
-            const response = await axios.get('https://cg.hnu.edu.cn/assignment/', {
-                headers: { 'User-Agent': browserUA, 'Cookie': cookie, 'Accept': 'text/html' },
-                timeout: 20000, maxRedirects: 0, validateStatus: () => true,
-            });
-            return response.status === 200 && String(response.data ?? '').length > 500;
-        },
-    },
-};
-
-function profileDir(backend: string): string {
-    return path.join(os.homedir(), '.ojassist', 'browser-profile', backend);
-}
-
-export default vscode.commands.registerCommand('ojassist.webLogin', async () => {
-    const config = await readConfig();
-    if (config === undefined) {
-        vscode.window.showErrorMessage('OJ-Assistant: .ojassistconfig.json not found - open a workspace that contains one.');
+export default vscode.commands.registerCommand('ojassist.webLogin', async (target?: vscode.Uri | string) => {
+    const root = typeof target === 'string' ? vscode.Uri.parse(target) : target || accounts.current?.root || accounts.folder()?.uri;
+    if (!root || (vscode.workspace as any).isTrusted === false) { vscode.window.showWarningMessage('请打开并信任账号工作区，再进行浏览器登录'); return; }
+    const file = path.join(root.fsPath, '.ojassistconfig.json');
+    let config: any;
+    try { config = await accounts.vault.read(file); }
+    catch (error) {
+        vscode.window.showErrorMessage('OJ-Assistant: 无法读取账号配置：' + safeMessage(error));
         return;
     }
-    const spec = platforms[config.backend];
+    const session = accounts.get(root);
+    const adapter = adapterFor(config.backend);
+    const spec = adapter?.login;
     if (!spec) {
+        const supported = platformAdapters.filter(platform => platform.login).map(platform => platform.id).join(', ');
         vscode.window.showErrorMessage(
             `OJ-Assistant: backend "${config.backend}" does not support browser login ` +
-            `(supported: ${Object.keys(platforms).join(', ')}).`);
+            `(supported: ${supported}).`);
         return;
     }
+    accounts.select(root);
+    accounts.change(session, 'loading', '正在等待浏览器登录…');
 
     await vscode.window.withProgress({
         cancellable: true,
@@ -204,7 +62,7 @@ export default vscode.commands.registerCommand('ojassist.webLogin', async () => 
         const startedAt = Date.now();
         const timeoutMs = Math.max(10, Number((config as any).webLoginTimeout ?? 300)) * 1000;
         try {
-            browser = await launchBrowser();
+            browser = await launchBrowser(accounts.profile(root, config.backend));
             const page = await browser.newPage();
             await page.setUserAgent(browserUA);
             await page.goto(spec.loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -215,6 +73,7 @@ export default vscode.commands.registerCommand('ojassist.webLogin', async () => 
             let cookieHeader = '';
             while (true) {
                 if (token.isCancellationRequested) {
+                    accounts.change(session, 'expired', '浏览器登录已取消，可以重试');
                     return; // finally closes the browser
                 }
                 if (Date.now() - startedAt > timeoutMs) {
@@ -234,19 +93,23 @@ export default vscode.commands.registerCommand('ojassist.webLogin', async () => 
                 break;
             }
 
-            await saveCookies(config!, cookieHeader);
+            const raw = await fs.readFile(file, 'utf8');
+            const latest = await accounts.vault.read(file, false);
+            if (latest.backend !== config.backend || latest.credentialRef !== config.credentialRef || latest.baseUrl !== config.baseUrl) { throw new Error('登录期间账号配置已变化，请重试'); }
+            await accounts.vault.save(file, latest, { ...latest.credentials, cookies: cookieHeader }, raw);
             progress.report({ message: 'Cookies saved, reloading adapter...' });
             try {
-                await vscode.commands.executeCommand('ojassist.reload');
+                await vscode.commands.executeCommand('ojassist.reload', root);
             } catch (err) {
                 // A reload failure is reported by that command itself; cookie
                 // saving already succeeded, so only log it here.
                 console.error('OJ-Assistant: reload after web login failed', err);
             }
             vscode.window.showInformationMessage(
-                `OJ-Assistant: Logged in to ${config!.backend}, cookies saved to .ojassistconfig.json.`);
+                `OJ-Assistant: ${config.backend} 凭据已保存至 VS Code 凭据存储，${session.state === 'ready' ? '账号已就绪' : '请检查账号状态'}。`);
         } catch (err: any) {
-            const message = err?.message ?? String(err);
+            const message = safeMessage(err, config.credentials);
+            accounts.change(session, 'error', message);
             if (/could not|channel|executable|browser/i.test(message)) {
                 vscode.window.showErrorMessage(
                     'OJ-Assistant: no Chrome/Edge installation was found for browser login. ' +
@@ -264,8 +127,7 @@ export default vscode.commands.registerCommand('ojassist.webLogin', async () => 
 });
 
 /** Try Chrome first, then Edge (always present on Windows 10/11). */
-async function launchBrowser(): Promise<any> {
-    const profile = profileDir(currentBackend() ?? 'default');
+async function launchBrowser(profile: string): Promise<any> {
     await fs.mkdir(profile, { recursive: true });
     let lastError: any;
     for (const channel of ['chrome', 'msedge']) {
@@ -284,13 +146,10 @@ async function launchBrowser(): Promise<any> {
     throw lastError ?? new Error('No supported browser found.');
 }
 
-let cachedBackend: string | undefined;
-function currentBackend(): string | undefined { return cachedBackend; }
-
 /** Serialize every cookie whose domain matches the platform suffix. */
 async function collectCookieHeader(browser: any, domainSuffix: string): Promise<string> {
     const filter = (cookies: any[]) => cookies
-        .filter(c => String(c.domain ?? '').includes(domainSuffix))
+        .filter(c => { const domain = String(c.domain || '').replace(/^\./, ''); const suffix = domainSuffix.replace(/^\./, ''); return domain === suffix || domain.endsWith('.' + suffix); })
         .map(c => `${c.name}=${c.value}`)
         .join('; ');
 
@@ -337,57 +196,12 @@ function parseCookieHeader(header: string): { [k: string]: string } {
     return out;
 }
 
-async function safeProbe(probe: PlatformSpec['probe'], cookieHeader: string): Promise<boolean> {
+async function safeProbe(probe: LoginSpec['probe'], cookieHeader: string): Promise<boolean> {
     try {
         return await probe!(cookieHeader);
     } catch {
         return false;
     }
-}
-
-interface OJConfigFile {
-    backend: string;
-    pathParseRule?: any;
-    credentials?: { [k: string]: any };
-    [k: string]: any;
-}
-
-function configPath(): string | undefined {
-    // Prefer the workspace folder of the active editor, but fall back to the
-    // first opened folder - otherwise having an unrelated file focused (or a
-    // file outside the workspace) makes every command fail with
-    // "config not found" even though the workspace does contain one.
-    const fromEditor = vscode.window.activeTextEditor
-        ? vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)
-        : undefined;
-    const folder = fromEditor ?? vscode.workspace.workspaceFolders?.[0];
-    return folder ? path.join(folder.uri.fsPath, '.ojassistconfig.json') : undefined;
-}
-
-async function readConfig(): Promise<OJConfigFile | undefined> {
-    const file = configPath();
-    if (!file) { return undefined; }
-    try {
-        const buffer = await fs.readFile(file);
-        const config = JSON.parse(buffer.toString());
-        cachedBackend = config.backend;
-        return config;
-    } catch {
-        return undefined;
-    }
-}
-
-async function saveCookies(config: OJConfigFile, cookieHeader: string): Promise<void> {
-    const file = configPath();
-    if (!file) { throw new Error('Workspace with .ojassistconfig.json is required.'); }
-    const raw = await fs.readFile(file, 'utf8');
-
-    // Preserve the file's indentation style (tabs or N spaces).
-    const indentMatch = raw.match(/^[ \t]+/m);
-    const indent = indentMatch ? indentMatch[0].slice(0, 10) : '  ';
-
-    config.credentials = Object.assign({}, config.credentials, { cookies: cookieHeader });
-    await fs.writeFile(file, JSON.stringify(config, null, indent) + '\n', 'utf8');
 }
 
 function delay(ms: number): Promise<void> {

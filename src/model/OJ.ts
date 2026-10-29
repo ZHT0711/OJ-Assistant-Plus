@@ -42,6 +42,8 @@ export interface OJ {
      * @param sourceFile The source file related to this submit.
      */
     submit(sourceFile: SourceFile): Promise<Function>;
+    /** Resume a known record without sending code again. */
+    resumeSubmission?(recordId: string, sourceFile: SourceFile): Function;
 
     /**
      * Get problem detials

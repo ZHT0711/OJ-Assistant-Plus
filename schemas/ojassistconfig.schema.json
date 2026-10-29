@@ -1,0 +1,121 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "OJ Assistant account configuration",
+    "description": "Configuration for one account workspace. Credentials are migrated to VS Code SecretStorage; only non-sensitive values stay in this file.",
+    "type": "object",
+    "required": ["backend"],
+    "properties": {
+        "backend": {
+            "type": "string",
+            "description": "Platform adapter id. Readable aliases such as hduoj / hnu-acm / hnu-cg are accepted.",
+            "examples": ["luogu", "codeforces", "leetcode", "neuoj", "csecg", "hnuacm", "hnucg", "hdoj", "fjutacm"]
+        },
+        "baseUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Override the platform base URL (for mirrors or self-hosted deployments)."
+        },
+        "credentials": {
+            "type": "object",
+            "description": "Sensitive fields (password, cookies, token, secret, apiKey) are moved to SecretStorage automatically.",
+            "properties": {
+                "username": { "type": "string" },
+                "password": { "type": "string" },
+                "cookies": { "type": "string", "description": "Cookie header harvested by the browser login command." }
+            },
+            "additionalProperties": true
+        },
+        "credentialRef": {
+            "type": "string",
+            "description": "Managed by the extension; identifies the SecretStorage entry."
+        },
+        "preferredLanguage": {
+            "type": ["string", "number"],
+            "description": "Platform language id chosen in the panel; overrides the submission picker."
+        },
+        "askLanguage": {
+            "type": "boolean",
+            "default": true,
+            "description": "Ask which platform language to use when submitting. Set false to use the first match."
+        },
+        "languages": {
+            "type": "object",
+            "description": "Source extension (or platform language key) -> platform language value.",
+            "additionalProperties": { "type": ["string", "number"] }
+        },
+        "pathParseRule": {
+            "type": "object",
+            "description": "Regular expressions that map a source file path to a problem id.",
+            "properties": {
+                "contestProblem": { "type": "string" },
+                "normalProblem": { "type": "string" }
+            },
+            "additionalProperties": false
+        },
+        "translation": {
+            "type": "object",
+            "description": "Problem-statement translation providers. 'auto' tries the configured chain.",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "enum": ["auto", "microsoft", "google", "tencent", "youdao", "mymemory", "baidu", "caiyun"]
+                },
+                "tencentWebToken": { "type": "string" },
+                "youdao": {
+                    "type": "object",
+                    "properties": {
+                        "appKey": { "type": "string" },
+                        "appSecret": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                },
+                "tencent": {
+                    "type": "object",
+                    "properties": {
+                        "secretId": { "type": "string" },
+                        "secretKey": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                },
+                "baidu": {
+                    "type": "object",
+                    "properties": {
+                        "appId": { "type": "string" },
+                        "secretKey": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                },
+                "caiyun": {
+                    "type": "object",
+                    "properties": {
+                        "token": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": true
+        },
+        "webLoginTimeout": {
+            "type": "number",
+            "minimum": 10,
+            "default": 300,
+            "description": "Seconds to wait for the browser login to complete."
+        },
+        "captchaAttempts": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3,
+            "description": "Automatic captcha retry count for username/password login (CSECG / NEU OJ)."
+        },
+        "submitBody": {
+            "type": "string",
+            "description": "Optional submit-body template with {id} {contestId} {langId} {code} placeholders (NEU OJ)."
+        },
+        "endpoints": {
+            "type": "object",
+            "description": "Optional endpoint overrides for self-hosted deployments.",
+            "additionalProperties": true
+        }
+    },
+    "additionalProperties": true
+}

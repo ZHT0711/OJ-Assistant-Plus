@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { existsSync } from 'fs';
-import { config } from '../extension';
+import { accounts } from '../account/session';
 import { parseSourceFile } from '../utils';
 
 export default vscode.commands.registerCommand('ojassist.dataFile', () => {
     if (vscode.window.activeTextEditor) {
-        let sourceFile = parseSourceFile(vscode.window.activeTextEditor?.document.uri, config, vscode.window.activeTextEditor?.document.getText());
+        let sourceFile = parseSourceFile(vscode.window.activeTextEditor.document.uri, accounts.forUri(vscode.window.activeTextEditor.document.uri)?.config as any, vscode.window.activeTextEditor.document.getText());
         if (sourceFile === null) {
             vscode.window.showErrorMessage(`OJ-Assistant: This is not a valid source code.`);
             return "";

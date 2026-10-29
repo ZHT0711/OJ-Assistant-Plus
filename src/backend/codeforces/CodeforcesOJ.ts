@@ -74,6 +74,7 @@ export class CodeforcesOJ implements OJ {
     async login(): Promise<CodeforcesUser> {
         this.cookieJar = new CookieJar();
         this.axiosConfig = {
+            timeout: 15000,
             jar: this.cookieJar,
             withCredentials: true,
             headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.2704.103 Safari/537.36" }
@@ -160,24 +161,24 @@ export class CodeforcesOJ implements OJ {
         };
         if (sourceFile.contestId) {
             return () => {
-                return new Promise(resolve => {
+                return new Promise((resolve, reject) => {
                     axios.get(this.baseUrl +
                         `/contest/${sourceFile.contestId}/my`,
                         this.axiosConfig)
                         .then(response => {
                             resolveSubmitResult(response.data, resolve);
-                        });
+                        }).catch(reject);
                 });
             };
         } else {
             return () => {
-                return new Promise(resolve => {
+                return new Promise((resolve, reject) => {
                     axios.get(this.baseUrl +
                         `/submissions/${this.user.user}`,
                         this.axiosConfig)
                         .then(response => {
                             resolveSubmitResult(response.data, resolve);
-                        });
+                        }).catch(reject);
                 });
             };
         }

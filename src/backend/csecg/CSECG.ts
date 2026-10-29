@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
 import { promises as fs } from 'fs';
+import { parseCsecgJudgeResponse } from './verdict';
 import {
     OJ, User, Configuration,
     SourceFile, ProblemSubmit, Problem, ProblemInfo,
@@ -87,6 +88,7 @@ export class CSECG implements OJ {
             jar: this.cookieJar,
             withCredentials: true,
             headers: { 'User-Agent': CSECG.browserUA },
+            timeout: 15000,
         };
 
         const credentials = this.config.credentials ?? {};
@@ -127,14 +129,19 @@ export class CSECG implements OJ {
      * real login serves the (large) assignment page.
      */
     private async assertSessionAlive(): Promise<void> {
-        const probe = await axios.get(
+        let probe;
+        try {
+            probe = await axios.get(
             this.baseUrl + '/assignment/',
             Object.assign({}, this.axiosConfig, {
                 headers: Object.assign({}, this.axiosConfig.headers, { 'Accept': 'text/html' }),
                 maxRedirects: 0,
                 validateStatus: (s: number) => s < 500,
             })
-        );
+            );
+        } catch (err) {
+            throw this.explainConnectionError(err);
+        }
         const body = typeof probe.data === 'string' ? probe.data : String(probe.data ?? '');
         if (probe.status < 200 || probe.status >= 300 || body.length <= 500) {
             throw new Error(
@@ -277,10 +284,15 @@ export class CSECG implements OJ {
     }
 
     private async fetchHtml(url: string): Promise<string> {
-        const response = await axios.get(url, Object.assign({}, this.axiosConfig, {
-            headers: Object.assign({}, this.axiosConfig.headers, { 'Accept': 'text/html' }),
-            validateStatus: (s: number) => s === 200,
-        }));
+        let response;
+        try {
+            response = await axios.get(url, Object.assign({}, this.axiosConfig, {
+                headers: Object.assign({}, this.axiosConfig.headers, { 'Accept': 'text/html' }),
+                validateStatus: (s: number) => s === 200,
+            }));
+        } catch (err) {
+            throw this.explainConnectionError(err);
+        }
         const html = String(response.data ?? '');
         // Guests/expired sessions get an EMPTY 200 - fail loudly instead of
         // parsing the blank page into a fake "no content" problem.
@@ -289,6 +301,15 @@ export class CSECG implements OJ {
                 'OJ-Assistant: CSECG 会话已过期（页面返回空白）。请 Ctrl+Shift+P -> "Login via browser" 重新登录。');
         }
         return html;
+    }
+
+    private explainConnectionError(err: unknown): Error {
+        const error = err as { code?: string; message?: string };
+        if (/ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EAI_AGAIN|socket hang up/i.test(
+            `${error?.code ?? ''} ${error?.message ?? ''}`)) {
+            return new Error('无法连接 NEU CSECG。请确认浏览器能打开 neucsecg.neu.edu.cn；校外请连接学校的客户端 VPN。如使用代理，请将该域名设为直连。连通后点击题库刷新。');
+        }
+        return err instanceof Error ? err : new Error(String(err));
     }
 
     /**
@@ -508,20 +529,11 @@ export class CSECG implements OJ {
             this.baseUrl + '/assignment/longtimerunJSON.jsp?assignID=' + assignID + '&problemID=' + problemID,
             Object.assign({}, this.axiosConfig, {
                 headers: { 'Accept': 'application/json', 'User-Agent': CSECG.browserUA },
-                validateStatus: (s: number) => s < 500,
+                responseType: 'arraybuffer',
+                validateStatus: (s: number) => s === 200,
             })
         );
-        let content = '';
-        let ret = '';
-        try {
-            const arr = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
-            if (Array.isArray(arr)) {
-                for (const item of arr) {
-                    if (item && item.content !== undefined) { content = String(item.content); }
-                    if (item && item.ret !== undefined) { ret = String(item.ret); }
-                }
-            }
-        } catch { /* non-json body: keep empty content */ }
+        const verdict = parseCsecgJudgeResponse(response.data, String(response.headers['content-type'] ?? ''));
 
         const result = new ProblemSubmit();
         result.id = Number(problemID) || 0;
@@ -532,24 +544,9 @@ export class CSECG implements OJ {
         result.codelen = sourceFile.code.length;
         result.time = '-';
         result.memory = '-';
-        result.result = this.mapVerdict(content, ret);
+        result.result = verdict.status;
+        result.details = verdict.details;
         return result;
-    }
-
-    private mapVerdict(content: string, ret: string): string {
-        const t = content.trim();
-        if (t === '' && ret === '1') { return 'Pending...'; }
-        if (/还未提交|尚未|排队|等待|评测中|正在|running|judging|pending|waiting/i.test(t)) {
-            return 'Pending...';
-        }
-        if (/编译中/.test(t)) { return 'Judging...'; }
-        if (/通过|正确|Accepted/.test(t)) { return 'Accepted'; }
-        if (/编译错误|Compile/i.test(t)) { return 'Compile Error'; }
-        if (/答案错误|Wrong/i.test(t)) { return 'Wrong Answer'; }
-        if (/运行错误|Runtime/i.test(t)) { return 'Runtime Error'; }
-        if (/超时|Time Limit/i.test(t)) { return 'Time Limit Exceeded'; }
-        if (/内存|Memory/i.test(t)) { return 'Memory Limit Exceeded'; }
-        return t || ('Status ' + (ret || '?'));
     }
 }
 

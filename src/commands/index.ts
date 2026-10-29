@@ -9,8 +9,12 @@ import QQToken from './qqToken';
 import { ProblemTreeProvider, ProblemNode, openProblemFile } from '../problems/tree';
 import * as path from 'path';
 import { parseSourceFile } from '../utils';
-import { getPreferredLanguage, setPreferredLanguage } from '../utils/languageState';
-import { config, ojServer } from '../extension';
+import { getPreferredLanguage, setPreferredLanguage, languageFileExt } from '../utils/languageState';
+import { adapterFor } from '../backend';
+import { isPracticeUri, practiceForUri, registerPractice } from '../practice/controller';
+import { registerAccountCommands } from '../account/controller';
+import { accounts } from '../account/session';
+import { SubmissionRecord } from '../account/submissions';
 
 const commands: Array<vscode.Disposable> = [Submit, Data, DataFile, WebLogin, InitWorkspace, QQToken];
 
@@ -24,12 +28,14 @@ function safePush(context: vscode.ExtensionContext, fn: () => vscode.Disposable,
 }
 
 export function registerCommands(context: vscode.ExtensionContext) {
+    registerAccountCommands(context);
+    registerPractice(context);
     // Tree-click handler FIRST. Tree items carry NO command arguments (see
     // tree.ts); the clicked item is resolved through TreeView.selection.
     let problemTreeView: vscode.TreeView<ProblemNode> | undefined;
-    safePush(context, () => vscode.commands.registerCommand('ojassist.openProblem', (entry?: any) => {
+    safePush(context, () => vscode.commands.registerCommand('ojassist.openProblem', async (entry?: any) => {
         const target = entry?.id ? entry : problemTreeView?.selection?.[0]?.entry;
-        if (target?.id) { openProblemFile(target); }
+        if (target?.id) { await openProblemFile(target); }
     }), 'ojassist.openProblem');
 
     for (const cmd of commands) {
@@ -54,11 +60,12 @@ export function registerCommands(context: vscode.ExtensionContext) {
     }), 'ojassist.searchProblems');
     safePush(context, () => vscode.commands.registerCommand('ojassist.refreshProblems', () => treeProvider.reload()), 'ojassist.refreshProblems');
     safePush(context, () => vscode.commands.registerCommand('ojassist.pickLanguage', async () => {
-        if (typeof ojServer?.listLanguages !== 'function') {
+        const server = accounts.current?.server;
+        if (typeof server?.listLanguages !== 'function') {
             vscode.window.showWarningMessage('OJ-Assistant: 当前平台还没有可选语言列表。');
             return;
         }
-        const languages = ojServer.listLanguages!();
+        const languages = server.listLanguages!();
         if (languages.length === 0) { return; }
         const current = getPreferredLanguage();
         const items = languages.map((l: { value: string | number; label: string }) => ({
@@ -70,10 +77,13 @@ export function registerCommands(context: vscode.ExtensionContext) {
             placeHolder: '选择本次做题使用的语言（影响生成文件的扩展名与提交语言）',
         }) as { value: string | number; rawLabel: string } | undefined;
         if (!picked) { return; }
-        setPreferredLanguage({ value: picked.value, label: picked.rawLabel });
+        const choice = { value: picked.value, label: picked.rawLabel };
+        setPreferredLanguage(choice);
+        if (accounts.current) { await accounts.remember(accounts.current, languageFileExt(choice), choice); }
         await persistPreferredLanguage(picked.value);
         treeProvider.refresh();
     }), 'ojassist.pickLanguage');
+    safePush(context, () => vscode.commands.registerCommand('ojassist.recordAccountVerdict', (record: SubmissionRecord) => treeProvider.applyVerdict(record)), 'ojassist.recordAccountVerdict');
     safePush(context, () => vscode.commands.registerCommand('ojassist.loadMoreProblems', () => treeProvider.loadMore()), 'ojassist.loadMoreProblems');
 
     // Pinned panel action: submit the problem of the file currently focused.
@@ -88,12 +98,18 @@ export function registerCommands(context: vscode.ExtensionContext) {
             vscode.window.showWarningMessage('OJ-Assistant: 先打开一个题目代码文件，再点“在浏览器打开”。');
             return;
         }
-        const info = parseSourceFile(editor.document.uri, config, editor.document.getText());
+        if (isPracticeUri(editor.document.uri)) {
+            const practice = practiceForUri(editor.document.uri);
+            if (practice) { await vscode.env.openExternal(vscode.Uri.parse(practice.url)); }
+            return;
+        }
+        const session = accounts.forUri(editor.document.uri);
+        const info = parseSourceFile(editor.document.uri, session?.config as any, editor.document.getText());
         if (!info) {
             vscode.window.showWarningMessage('OJ-Assistant: 当前文件名不符合题目命名规则，无法定位网页地址。');
             return;
         }
-        const url = problemWebUrl((config as any)?.backend, info);
+        const url = adapterFor(session?.config?.backend)?.webUrl(info);
         if (!url) {
             vscode.window.showWarningMessage('OJ-Assistant: 当前平台没有已知的网页地址规则。');
             return;
@@ -105,9 +121,9 @@ export function registerCommands(context: vscode.ExtensionContext) {
 /** Persist the language choice into .ojassistconfig.json (preferredLanguage). */
 async function persistPreferredLanguage(value: string | number): Promise<void> {
     try {
-        const folder = vscode.workspace.workspaceFolders?.[0];
-        if (!folder) { return; }
-        const file = path.join(folder.uri.fsPath, '.ojassistconfig.json');
+        const session = accounts.current;
+        if (!session) { return; }
+        const file = path.join(session.root.fsPath, '.ojassistconfig.json');
         const { promises: fsp } = require('fs');
         const raw = await fsp.readFile(file, 'utf8');
         const indentMatch = raw.match(/^[ 	]+/m);
@@ -117,42 +133,5 @@ async function persistPreferredLanguage(value: string | number): Promise<void> {
         await fsp.writeFile(file, JSON.stringify(cfg, null, indent) + '\n', 'utf8');
     } catch (err) {
         console.error('OJ-Assistant: failed to persist preferredLanguage', err);
-    }
-}
-
-/** Platform -> web page URL for a problem (fallback escape hatch). */
-function problemWebUrl(backend: string | undefined, info: { id: string; contestId?: string }): string | undefined {
-    switch (backend) {
-        case 'luogu':
-            return 'https://www.luogu.com.cn/problem/' + info.id.toUpperCase();
-        case 'leetcode':
-            return 'https://leetcode.cn/problems/' + info.id + '/';
-        case 'neuoj':
-            return info.contestId
-                ? 'https://oj.neu.edu.cn/contests/' + info.contestId
-                : 'https://oj.neu.edu.cn/problems/' + info.id;
-        case 'csecg':
-            return info.contestId
-                ? 'http://neucsecg.neu.edu.cn/assignment/programList.jsp?proNum=' + info.id + '&assignID=' + info.contestId
-                : 'http://neucsecg.neu.edu.cn/assignment/';
-        case 'hnucg':
-        case 'hnu-cg':
-            return info.contestId
-                ? 'https://cg.hnu.edu.cn/assignment/programList.jsp?proNum=' + info.id + '&assignID=' + info.contestId
-                : 'https://cg.hnu.edu.cn/assignment/';
-        case 'hnuacm':
-        case 'hnu-acm':
-            return 'http://acm.hnu.edu.cn/online/?action=problem&type=show&id=' + info.id;
-        case 'codeforces': {
-            if (info.contestId) {
-                return 'https://codeforces.com/problemset/problem/' + info.contestId + '/' + info.id;
-            }
-            const m = info.id.match(/^(\d+)(.*)$/);
-            return m ? 'https://codeforces.com/problemset/problem/' + m[1] + '/' + m[2] : undefined;
-        }
-        case 'fjutacm':
-            return 'http://www.fjutacm.com/Problem.jsp?pid=' + info.id;
-        default:
-            return undefined;
     }
 }

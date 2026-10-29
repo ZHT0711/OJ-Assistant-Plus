@@ -64,6 +64,7 @@ export class FJUTACMOJ implements OJ {
     async login(): Promise<FJUTACMUser> {
         let cookieJar = new CookieJar();
         this.axiosConfig = {
+            timeout: 15000,
             jar: cookieJar,
             withCredentials: true,
             headers: { "content-type": "application/x-www-form-urlencoded" }
@@ -103,24 +104,24 @@ export class FJUTACMOJ implements OJ {
         };
         if (sourceFile.contestId) {
             return () => {
-                return new Promise(resolve => {
+                return new Promise((resolve, reject) => {
                     axios.get(this.baseUrl +
                         `/module/contestNew/status.jsp?user=${this.user.user}&pid=${sourceFile.id}&result=-1&lang=${sourceFile.languageOverride ?? getLanguageId(sourceFile.sourceType)}&cid=${sourceFile.contestId}&page=1`,
                         this.axiosConfig)
                         .then(response => {
                             resolveSubmitResult(response.data, resolve);
-                        });
+                        }).catch(reject);
                 });
             };
         } else {
             return () => {
-                return new Promise(resolve => {
+                return new Promise((resolve, reject) => {
                     axios.get(this.baseUrl +
                         `/Status.jsp?all=1&user=${this.user.user}&pid=${sourceFile.id}&lang=${sourceFile.languageOverride ?? getLanguageId(sourceFile.sourceType)}`,
                         this.axiosConfig)
                         .then(response => {
                             resolveSubmitResult(response.data, resolve);
-                        });
+                        }).catch(reject);
                 });
             };
         }

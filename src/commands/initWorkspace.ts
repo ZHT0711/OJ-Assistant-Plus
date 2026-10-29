@@ -108,8 +108,10 @@ const runnerSettings = {
     'code-runner.runInTerminal': false,
     'code-runner.saveFileBeforeRun': true,
     'code-runner.ignoreSelection': true,
+    'code-runner.fileDirectoryAsCwd': true,
     'code-runner.executorMap': {
-        cpp: 'g++ -O2 -std=c++17 -o $dirWithoutTrailingSlash\\$fileNameWithoutExt.exe $fullFileName && $dirWithoutTrailingSlash\\$fileNameWithoutExt.exe < $dirWithoutTrailingSlash\\$fileNameWithoutExt.in',
+        c: 'chcp 65001 >nul && gcc -O2 -o "$fileNameWithoutExt.exe" "$fileName" && if exist "$fileNameWithoutExt.in" (".\\$fileNameWithoutExt.exe" < "$fileNameWithoutExt.in") else (echo Input file missing: $fileNameWithoutExt.in. Save the source file, then click Edit on the sample input. & exit /b 1)',
+        cpp: 'chcp 65001 >nul && g++ -O2 -std=c++17 -o "$fileNameWithoutExt.exe" "$fileName" && if exist "$fileNameWithoutExt.in" (".\\$fileNameWithoutExt.exe" < "$fileNameWithoutExt.in") else (echo Input file missing: $fileNameWithoutExt.in. Save the source file, then click Edit on the sample input. & exit /b 1)',
     },
 };
 
@@ -207,6 +209,7 @@ export default vscode.commands.registerCommand('ojassist.initWorkspace', async (
         if (!overwrite) { return; }
 
         await writeWorkspaceFiles(folder.uri, card);
+        await vscode.commands.executeCommand('ojassist.reload', folder.uri);
         panel.webview.postMessage({ command: 'done', files: ['.ojassistconfig.json', '.vscode/settings.json'] });
         vscode.window.showInformationMessage(
             `OJ-Assistant: 已按 ${card.name} 初始化。按 Ctrl+Shift+P -> "Login via browser" 登录后即可使用。`);

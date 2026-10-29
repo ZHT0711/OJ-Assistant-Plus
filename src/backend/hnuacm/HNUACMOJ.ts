@@ -38,6 +38,7 @@ export class HNUACMOJ implements OJ {
     async login(): Promise<HNUACMUser> {
         this.cookieJar = new CookieJar();
         this.axiosConfig = {
+            timeout: 15000,
             jar: this.cookieJar,
             withCredentials: true,
             headers: { 'User-Agent': browserUA },
