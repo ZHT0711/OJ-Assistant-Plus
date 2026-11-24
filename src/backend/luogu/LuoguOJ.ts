@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
+import { checkSubmissionResponse, submissionRequest } from '../submissionResponse';
 import axiosCookieJarSupport from '@3846masa/axios-cookiejar-support';
 import { CookieJar, Cookie } from 'tough-cookie';
 import * as cheerio from 'cheerio';
@@ -281,6 +282,7 @@ export class LuoguOJ implements OJ {
             ? pageHtml.match(/<meta\s+name="csrf-token"\s+content="([^"]+)"/)?.[1]
             : undefined;
         if (!csrf) {
+            checkSubmissionResponse({ data: pageHtml });
             throw new Error('OJ-Assistant: could not extract the luogu CSRF token (session may have expired).');
         }
 
@@ -305,11 +307,11 @@ export class LuoguOJ implements OJ {
             maxRedirects: 0,
             validateStatus: (s: number) => s < 500,
         });
-        const response = await axios.post(submitUrl, {
+        const response = await submissionRequest(axios.post(submitUrl, {
             code: sourceFile.code,
             lang,
             enableO2: 0,
-        }, config);
+        }, config));
 
         if (response.status === 403) {
             const msg = JSON.stringify(response.data ?? {}).slice(0, 200);

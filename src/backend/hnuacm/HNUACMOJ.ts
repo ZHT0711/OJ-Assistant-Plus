@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
+import { checkSubmissionResponse, submissionRequest } from '../submissionResponse';
 import axiosCookieJarSupport from '@3846masa/axios-cookiejar-support';
 import { CookieJar, Cookie } from 'tough-cookie';
 import * as cheerio from 'cheerio';
@@ -168,6 +169,7 @@ export class HNUACMOJ implements OJ {
             throw new Error('OJ-Assistant: HNU ACM session expired. Run "OJ-Assist: Login via browser" to refresh cookies.');
         }
         const action = form.attr('action') ?? './?action=submit';
+        checkSubmissionResponse({ data: form.toString() });
         const body: { [key: string]: any } = {};
         form.find('input[name]').each((_, el) => { body[$(el).attr('name')!] = $(el).attr('value') ?? ''; });
         const problemField = Object.keys(body).find(k => /problem/i.test(k));
@@ -183,10 +185,10 @@ export class HNUACMOJ implements OJ {
         const area = form.find('textarea[name]').first();
         body[area.attr('name') ?? 'source'] = sourceFile.code;
         if (!body.source) { body.source = sourceFile.code; }
-        const response = await axios.post(new URL(action, this.baseUrl + '/').toString(), qstringify(body), Object.assign({}, this.axiosConfig, {
+        const response = await submissionRequest(axios.post(new URL(action, this.baseUrl + '/').toString(), qstringify(body), Object.assign({}, this.axiosConfig, {
             headers: Object.assign({}, this.axiosConfig.headers, { 'Content-Type': 'application/x-www-form-urlencoded', Referer: this.baseUrl + '/?action=form&type=submitproblem' }),
             validateStatus: (s: number) => s < 500,
-        }));
+        })));
         if (response.status >= 400 || /Login Information|login required/i.test(String(response.data ?? ''))) {
             throw new Error('OJ-Assistant: HNU ACM submission was rejected; the session may have expired.');
         }

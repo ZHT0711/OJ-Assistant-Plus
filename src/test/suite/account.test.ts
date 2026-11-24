@@ -5,8 +5,9 @@ import * as path from 'path';
 import { CredentialVault } from '../../account/credentials';
 import { matchLanguages } from '../../account/language';
 import { problemSamples } from '../../account/sampleData';
-import { Cancellation, recordOf, SubmissionTracker, WaitStopped } from '../../account/submissions';
+import { Cancellation, recordOf, submissionAccountKey, SubmissionTracker, WaitStopped } from '../../account/submissions';
 import { SubmissionHistory } from '../../account/history';
+import { checkSubmissionResponse, SubmissionRejected, submissionRequest } from '../../backend/submissionResponse';
 
 function cancellation() {
     let listener: (() => void) | undefined;
@@ -16,6 +17,68 @@ function cancellation() {
 const metadata = { scope: 'one|A', sessionKey: 'one', backend: 'fixture', account: 'test', problemId: 'A', relativeFile: 'A.cpp' };
 
 suite('Account submission lifecycle', () => {
+    test('explicit cooldown releases the problem lock and blocks other uploads on this account', async () => {
+        const tracker = new SubmissionTracker();
+        const rateLimitKey = submissionAccountKey('fixture', 'https://judge.test/', 'student');
+        const job = tracker.create({ ...metadata, rateLimitKey });
+        let uploads = 0;
+        const retryAt = Date.now() + 60000;
+        await assert.rejects(() => tracker.send(job, async () => { uploads++; throw new SubmissionRejected('cooldown', 'wait', retryAt); }, 100), SubmissionRejected);
+        assert.strictEqual(job.state, 'failed'); assert.strictEqual(job.retryAt, retryAt);
+        assert.strictEqual(tracker.find(metadata.scope), undefined);
+        const next = tracker.create({ ...metadata, scope: 'other-root|B', sessionKey: 'other-root', rateLimitKey });
+        await assert.rejects(() => tracker.send(next, async () => { uploads++; return () => undefined; }, 100), /还需等待/);
+        assert.strictEqual(uploads, 1); assert.strictEqual(next.state, 'failed');
+        const otherAccount = tracker.create({ ...metadata, scope: 'other-account|A', rateLimitKey: submissionAccountKey('fixture', undefined, 'other') });
+        await tracker.send(otherAccount, async () => { uploads++; return () => undefined; }, 100);
+        assert.strictEqual(uploads, 2);
+    });
+    test('cooldown history survives restart and expires without automatically resending code', async () => {
+        const tracker = new SubmissionTracker();
+        const record = { ...recordOf(tracker.create(metadata)), state: 'failed' as const, restriction: 'cooldown' as const, retryAt: Date.now() + 60000 };
+        const restarted = new SubmissionTracker(); restarted.restore([record]);
+        const blocked = restarted.create(metadata); let uploads = 0;
+        await assert.rejects(() => restarted.send(blocked, async () => { uploads++; return () => undefined; }, 100), SubmissionRejected);
+        assert.strictEqual(uploads, 0);
+        for (const job of restarted.jobs.values()) { job.retryAt = Date.now() - 1; }
+        const allowed = restarted.create(metadata);
+        await restarted.send(allowed, async () => { uploads++; return () => undefined; }, 100);
+        assert.strictEqual(uploads, 1);
+    });
+    test('captcha rejection is retryable while network failures remain uncertain', async () => {
+        const tracker = new SubmissionTracker(); const job = tracker.create(metadata);
+        await assert.rejects(() => tracker.send(job, async () => { throw new SubmissionRejected('captcha', '验证'); }, 100), SubmissionRejected);
+        assert.strictEqual(job.state, 'failed'); assert.strictEqual(job.restriction, 'captcha');
+        const retry = tracker.create(metadata);
+        await assert.rejects(() => tracker.send(retry, async () => { throw new Error('connection lost'); }, 100));
+        assert.strictEqual(retry.state, 'unknown'); assert.throws(() => tracker.create(metadata));
+    });
+    test('a late explicit rejection replaces uncertain upload state with a persisted restriction', async () => {
+        const tracker = new SubmissionTracker(); const job = tracker.create(metadata);
+        let reject!: (error: Error) => void;
+        await assert.rejects(() => tracker.send(job, () => new Promise((_, failure) => { reject = failure; }), 5), WaitStopped);
+        assert.strictEqual(job.state, 'unknown');
+        reject(new SubmissionRejected('cooldown', 'wait', Date.now() + 60000));
+        await assert.rejects(() => job.upload!, SubmissionRejected);
+        assert.strictEqual(job.state, 'failed'); assert.strictEqual(recordOf(job).restriction, 'cooldown');
+    });
+    test('one account cannot upload different problems concurrently, including a timed-out upload', async () => {
+        const tracker = new SubmissionTracker(); const job = tracker.create(metadata);
+        let finish!: (resolver: Function) => void;
+        await assert.rejects(() => tracker.send(job, () => new Promise(resolve => { finish = resolve; }), 5), WaitStopped);
+        const next = tracker.create({ ...metadata, scope: 'one|B', problemId: 'B' });
+        let uploads = 0;
+        await assert.rejects(() => tracker.send(next, async () => { uploads++; return () => undefined; }, 100), /正在上传/);
+        finish(() => undefined); await job.upload;
+        await tracker.send(tracker.create({ ...metadata, scope: 'one|B', problemId: 'B' }), async () => { uploads++; return () => undefined; }, 100);
+        assert.strictEqual(uploads, 1);
+    });
+    test('restored unfinished records retain duplicate protection with recoverable states', () => {
+        const tracker = new SubmissionTracker(); const record = recordOf(tracker.create(metadata));
+        const restored = new SubmissionTracker(); restored.restore([{ ...record, state: 'uploading' }]);
+        assert.strictEqual(restored.find(metadata.scope)!.state, 'unknown');
+        assert.throws(() => restored.create(metadata));
+    });
     test('uploads once, rejects duplicate reservations and polls pending verdicts', async () => {
         const tracker = new SubmissionTracker(); const job = tracker.create(metadata);
         let uploads = 0, queries = 0;
@@ -74,6 +137,7 @@ suite('Account submission lifecycle', () => {
         await assert.rejects(() => tracker.send(job, () => new Promise(resolve => { finish = resolve; }), 5), WaitStopped);
         job.state = 'failed';
         const replacement = tracker.create(metadata);
+        await tracker.send(replacement, async () => async () => ({ result: 'Accepted' }), 100);
         finish(async () => ({ result: 'Accepted' })); await job.upload;
         assert.strictEqual(job.state, 'failed'); assert.strictEqual(tracker.find(metadata.scope), replacement);
     });
@@ -82,6 +146,50 @@ suite('Account submission lifecycle', () => {
         job.resolver = async () => ({ result: 'Accepted' });
         tracker.create({ ...metadata, sessionKey: 'two', scope: 'two|A' });
         assert.ok(!JSON.stringify(recordOf(job)).includes('resolver')); assert.strictEqual(tracker.jobs.size, 2);
+    });
+});
+
+suite('Platform submission restrictions', () => {
+    const now = 1700000000000;
+    test('parses Retry-After seconds, dates, JSON durations and localized messages', () => {
+        const cases = [
+            { response: { status: 429, headers: { 'retry-after': '12' } }, seconds: 12 },
+            { response: { status: 429, headers: { 'Retry-After': new Date(now + 15000).toUTCString() } }, seconds: 15 },
+            { response: { status: 429, data: { retry_after: 7 } }, seconds: 7 },
+            { response: { status: 200, data: { error: '提交过于频繁，请在 2 分钟后重试' } }, seconds: 120 },
+            { response: { status: 200, data: { detail: 'Please wait 5 seconds before submitting again.' } }, seconds: 5 },
+            { response: { status: 429, headers: { 'retry-after': 'invalid' } }, seconds: 60 },
+            { response: { status: 429, headers: { 'retry-after': '0' } }, seconds: 0 },
+        ];
+        for (const { response, seconds } of cases) {
+            assert.throws(() => checkSubmissionResponse(response, now), error => error instanceof SubmissionRejected && error.kind === 'cooldown' && error.retryAt === now + seconds * 1000);
+        }
+    });
+    test('recognizes JSON validation errors, HTML captcha forms, WAF pages and script alerts', () => {
+        for (const data of [
+            { errors: { captcha: ['验证码错误'] } }, { captcha_required: true },
+            '<form><input name="captchaCode"></form>', '<div class="g-recaptcha"></div>',
+            '<html><script src="/cdn-cgi/challenge-platform/challenge.js"></script></html>',
+            '<script>alert("验证码错误，请重试");</script>',
+        ]) {
+            assert.throws(() => checkSubmissionResponse({ status: 200, data }), error => error instanceof SubmissionRejected && error.kind === 'captcha');
+        }
+        assert.throws(() => checkSubmissionResponse({ status: 200, data: '<p>You have submitted the same code before.</p>' }), error => error instanceof SubmissionRejected && error.kind === 'duplicate');
+    });
+    test('does not confuse source code, optional disabled captcha inputs or successful responses with a challenge', () => {
+        for (const data of [
+            { submission_id: 42 }, { rid: 42, code: 'captcha too many requests' },
+            '<form><textarea name="source">captcha too many requests</textarea><input disabled name="captcha"></form>',
+            '<pre>验证码</pre><script>const captcha = false;</script><p>Submitted</p>',
+        ]) { assert.doesNotThrow(() => checkSubmissionResponse({ status: 200, data })); }
+    });
+    test('handles binary responses and Axios HTTP rejections without hiding network errors', async () => {
+        assert.throws(() => checkSubmissionResponse({ data: Buffer.from('验证码错误'), headers: { 'content-type': 'text/html; charset=utf-8' } }), SubmissionRejected);
+        await assert.rejects(() => submissionRequest(Promise.reject({ response: { status: 429, headers: { 'retry-after': 10 } } })), SubmissionRejected);
+        await assert.rejects(() => submissionRequest(Promise.resolve({ status: 403, data: { error: 'CAPTCHA_REQUIRED' } })), SubmissionRejected);
+        const network = new Error('socket closed');
+        await assert.rejects(() => submissionRequest(Promise.reject(network)), error => error === network);
+        assert.strictEqual((await submissionRequest(Promise.resolve({ data: { submission_id: 42 } }))).data.submission_id, 42);
     });
 });
 
@@ -142,6 +250,18 @@ suite('Credential migration and submission history', () => {
         assert.strictEqual((await history.list(root)).length, 2);
         const file = path.join(root, '.oj-assistant', 'accounts', 'history.json'); await fs.writeFile(file, '{bad');
         await assert.rejects(() => history.save(root, first), /无法读取/); assert.strictEqual(await fs.readFile(file, 'utf8'), '{bad');
+    });
+    test('old CSECG records are reinterpreted without rewriting or uploading', async () => {
+        const history = new SubmissionHistory();
+        const record = { ...recordOf(new SubmissionTracker().create(metadata)), backend: 'csecg',
+            verdict: { result: '评测结果未识别', details: '共有测试数据:1\n测试数据1完全正确\nwarning: &apos;count&apos;' } };
+        await history.save(root, record);
+        const file = path.join(root, '.oj-assistant', 'accounts', 'history.json');
+        const before = await fs.readFile(file, 'utf8');
+        const [loaded] = await history.list(root);
+        assert.strictEqual(loaded.verdict!.result, 'Accepted');
+        assert.ok(loaded.verdict!.details!.includes("'count'"));
+        assert.strictEqual(await fs.readFile(file, 'utf8'), before);
     });
 });
 

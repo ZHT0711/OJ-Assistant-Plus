@@ -6,6 +6,7 @@ import { safeMessage } from '../account/credentials';
 import { adapterFor, platformAdapters } from '../backend';
 import type { LoginSpec } from '../backend';
 import { browserUA } from '../backend/platforms';
+import { randomBytes } from 'crypto';
 
 // puppeteer-core is kept as a webpack external so its .d.ts (too new for our
 // TypeScript) is never parsed; require() gives us an untyped handle.
@@ -28,7 +29,7 @@ const puppeteer = require('puppeteer-core');
  * a single click.
  */
 
-export default vscode.commands.registerCommand('ojassist.webLogin', async (target?: vscode.Uri | string) => {
+export default vscode.commands.registerCommand('ojassist.webLogin', async (target?: vscode.Uri | string, options?: { newAccount?: boolean; label?: string }) => {
     const root = typeof target === 'string' ? vscode.Uri.parse(target) : target || accounts.current?.root || accounts.folder()?.uri;
     if (!root || (vscode.workspace as any).isTrusted === false) { vscode.window.showWarningMessage('请打开并信任账号工作区，再进行浏览器登录'); return; }
     const file = path.join(root.fsPath, '.ojassistconfig.json');
@@ -39,6 +40,7 @@ export default vscode.commands.registerCommand('ojassist.webLogin', async (targe
         return;
     }
     const session = accounts.get(root);
+    const loginAccountId = options?.newAccount ? randomBytes(16).toString('hex') : config.savedAccountId;
     const adapter = adapterFor(config.backend);
     const spec = adapter?.login;
     if (!spec) {
@@ -62,7 +64,7 @@ export default vscode.commands.registerCommand('ojassist.webLogin', async (targe
         const startedAt = Date.now();
         const timeoutMs = Math.max(10, Number((config as any).webLoginTimeout ?? 300)) * 1000;
         try {
-            browser = await launchBrowser(accounts.profile(root, config.backend));
+            browser = await launchBrowser(accounts.profile(root, config.backend, loginAccountId));
             const page = await browser.newPage();
             await page.setUserAgent(browserUA);
             await page.goto(spec.loginUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -95,8 +97,16 @@ export default vscode.commands.registerCommand('ojassist.webLogin', async (targe
 
             const raw = await fs.readFile(file, 'utf8');
             const latest = await accounts.vault.read(file, false);
-            if (latest.backend !== config.backend || latest.credentialRef !== config.credentialRef || latest.baseUrl !== config.baseUrl) { throw new Error('登录期间账号配置已变化，请重试'); }
-            await accounts.vault.save(file, latest, { ...latest.credentials, cookies: cookieHeader }, raw);
+            if (latest.backend !== config.backend || latest.credentialRef !== config.credentialRef || latest.baseUrl !== config.baseUrl ||
+                latest.savedAccountId !== config.savedAccountId) { throw new Error('登录期间账号配置已变化，请重试'); }
+            const credentials = options?.newAccount ? { cookies: cookieHeader } : { ...latest.credentials, cookies: cookieHeader };
+            let saved;
+            try {
+                saved = await accounts.library.remember({ backend: adapter!.id, baseUrl: latest.baseUrl, credentials,
+                    id: loginAccountId, label: options?.label, source: root.toString(), explicit: true });
+            } catch (error) { void vscode.window.showWarningMessage('账号库更新失败，将继续保存到当前刷题区：' + safeMessage(error, credentials)); }
+            await accounts.vault.save(file, { ...latest, savedAccountId: saved?.id || loginAccountId,
+                accountLabel: saved?.label || options?.label || latest.accountLabel }, credentials, raw);
             progress.report({ message: 'Cookies saved, reloading adapter...' });
             try {
                 await vscode.commands.executeCommand('ojassist.reload', root);

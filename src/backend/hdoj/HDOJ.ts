@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
+import { checkSubmissionResponse, submissionRequest } from '../submissionResponse';
 import axiosCookieJarSupport from '@3846masa/axios-cookiejar-support';
 import { stringify as qstringify } from 'qs';
 import { CookieJar, Cookie } from 'tough-cookie';
@@ -297,6 +298,7 @@ export class HDOJ implements OJ {
             throw new Error('OJ-Assistant: HDOJ submit form not found (session or page changed).');
         }
         const action = form.attr('action') ?? 'submit.php';
+        checkSubmissionResponse({ data: form.toString() });
         const fields: { [k: string]: string } = {};
         form.find('input[name]').each((i, el) => {
             const name = $(el).attr('name');
@@ -334,7 +336,7 @@ export class HDOJ implements OJ {
             ? spec.action
             : this.baseUrl + (spec.action.startsWith('/') ? '' : '/') + spec.action;
 
-        const response = await axios.post(actionUrl, qstringify(body),
+        const response = await submissionRequest(axios.post(actionUrl, qstringify(body),
             Object.assign({}, this.axiosConfig, {
                 headers: Object.assign({}, this.axiosConfig.headers, {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -343,8 +345,8 @@ export class HDOJ implements OJ {
                 responseType: 'arraybuffer',
                 maxRedirects: 5,
                 validateStatus: (s: number) => s < 500,
-            }));
-        const resultPage = GB.decode(new Uint8Array(response.data as ArrayBuffer));
+            })).then(result => ({ ...result, data: GB.decode(new Uint8Array(result.data as ArrayBuffer)) })));
+        const resultPage = response.data;
         if (/userloginex\.php\?action=login/.test(resultPage)) {
             throw new Error('OJ-Assistant: HDOJ session expired during submit - re-login via browser.');
         }

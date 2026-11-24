@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { checkSubmissionResponse, SubmissionRejected, SubmissionRestriction } from '../backend/submissionResponse';
 
 export interface Cancellation {
     readonly isCancellationRequested: boolean;
@@ -35,6 +36,9 @@ export interface SubmissionRecord {
     recordId?: string;
     verdict?: Verdict;
     message?: string;
+    rateLimitKey?: string;
+    restriction?: SubmissionRestriction;
+    retryAt?: number;
 }
 export interface SubmissionJob extends SubmissionRecord {
     resolver?: () => PromiseLike<Verdict> | Verdict;
@@ -48,9 +52,23 @@ export function recordOf(job: SubmissionJob): SubmissionRecord {
     const { resolver, upload, query, ...record } = job;
     return JSON.parse(JSON.stringify(record));
 }
+export function submissionAccountKey(backend: string, baseUrl: string | undefined, account: string): string {
+    return JSON.stringify([backend, (baseUrl || '').replace(/\/+$/, ''), account]);
+}
 export class SubmissionTracker {
     readonly jobs = new Map<string, SubmissionJob>();
     private polling = new Set<string>();
+    private uploading = new Map<string, string>();
+    restore(records: SubmissionRecord[], rateLimitKey?: string): void {
+        for (const record of records) {
+            if (this.jobs.has(record.localId)) { continue; }
+            let state = record.state;
+            if (state === 'preparing') { state = 'failed'; }
+            if (state === 'uploading') { state = 'unknown'; }
+            if (state === 'waiting') { state = 'paused'; }
+            this.jobs.set(record.localId, { ...record, state, rateLimitKey: record.rateLimitKey || rateLimitKey });
+        }
+    }
     find(scope: string): SubmissionJob | undefined {
         return Array.from(this.jobs.values()).find(job => job.scope === scope && !['completed', 'failed'].includes(job.state));
     }
@@ -63,16 +81,44 @@ export class SubmissionTracker {
     async send(job: SubmissionJob, submit: () => Promise<Function>, timeout: number, token?: Cancellation, changed: () => void = () => undefined): Promise<void> {
         if (job.state !== 'preparing' || job.upload) { throw new Error('这次提交已发起，不能重复上传'); }
         if (token?.isCancellationRequested) { job.state = 'failed'; changed(); throw new WaitStopped('cancelled'); }
+        const accountKey = job.rateLimitKey || job.sessionKey;
+        const retryAt = Math.max(0, ...Array.from(this.jobs.values())
+            .filter(other => (other.rateLimitKey || other.sessionKey) === accountKey && other.restriction === 'cooldown')
+            .map(other => other.retryAt || 0));
+        if (retryAt > Date.now()) {
+            job.state = 'failed'; job.restriction = 'cooldown'; job.retryAt = retryAt;
+            job.message = `平台提交冷却中，还需等待 ${Math.ceil((retryAt - Date.now()) / 1000)} 秒，再手动提交。`;
+            changed(); throw new SubmissionRejected('cooldown', job.message, retryAt);
+        }
+        const uploading = this.jobs.get(this.uploading.get(accountKey) || '');
+        if (uploading && uploading.state !== 'failed') {
+            job.state = 'failed'; job.message = '该账号正在上传另一份代码，请等待上传结果后再提交。';
+            changed(); throw new Error(job.message);
+        }
+        this.uploading.set(accountKey, job.localId);
+        const releaseUpload = () => { if (this.uploading.get(accountKey) === job.localId) { this.uploading.delete(accountKey); } };
         job.state = 'uploading'; changed();
         job.upload = Promise.resolve().then(submit).then(resolver => {
+            releaseUpload();
             job.resolver = resolver as any;
             job.recordId = (resolver as any).submissionId?.toString();
             if (job.state !== 'failed') { job.state = job.state === 'uploading' ? 'waiting' : 'paused'; }
             changed();
             return resolver;
-        }, error => { if (job.state !== 'failed') { job.state = 'unknown'; job.message = '上传结果尚未确认，请查看原站记录后再决定是否重新提交'; } changed(); throw error; });
+        }, error => {
+            releaseUpload();
+            if (error?.response) {
+                try { checkSubmissionResponse(error.response); } catch (rejection) { error = rejection; }
+            }
+            if (error instanceof SubmissionRejected) {
+                job.state = 'failed'; job.restriction = error.kind; job.retryAt = error.retryAt; job.message = error.message;
+            } else if (job.state !== 'failed') {
+                job.state = 'unknown'; job.message = '上传结果尚未确认，请查看原站记录后再决定是否重新提交';
+            }
+            changed(); throw error;
+        });
         try { await bounded(job.upload, timeout, token); }
-        catch (error) { if (!job.resolver) { job.state = 'unknown'; } changed(); throw error; }
+        catch (error) { if (!job.resolver && job.state === 'uploading') { job.state = 'unknown'; } changed(); throw error; }
     }
     async poll(job: SubmissionJob, options: { timeout: number; requestTimeout: number; interval: number; token?: Cancellation; onChange?: (job: SubmissionJob) => void }): Promise<Verdict> {
         if (!job.resolver) { throw new Error('提交尚无可查询凭据，请先查看原站提交记录'); }

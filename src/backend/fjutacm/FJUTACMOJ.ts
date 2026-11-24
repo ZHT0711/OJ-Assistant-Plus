@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
+import { submissionRequest } from '../submissionResponse';
 import { stringify as qstringify } from 'qs';
 import axiosCookieJarSupport from '@3846masa/axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
@@ -82,12 +83,12 @@ export class FJUTACMOJ implements OJ {
     }
     async submit(sourceFile: SourceFile): Promise<Function> {
         sourceFile = updateProblemInfo(sourceFile);
-        await axios.post(this.baseUrl + '/sb.action', qstringify({
+        await submissionRequest(axios.post(this.baseUrl + '/sb.action', qstringify({
             cid: sourceFile.contestId ?? -1,
             pid: sourceFile.id,
             language: sourceFile.languageOverride ?? getLanguageId(sourceFile.sourceType),
             code: sourceFile.code
-        }), this.axiosConfig);
+        }), this.axiosConfig));
         let resolveSubmitResult = (data: string, resolve: (value: unknown) => void) => {
             let $ = cheerio.load(data);
             let submitResult: ProblemSubmit = new ProblemSubmit;

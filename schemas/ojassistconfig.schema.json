@@ -29,6 +29,14 @@
             "type": "string",
             "description": "Managed by the extension; identifies the SecretStorage entry."
         },
+        "savedAccountId": {
+            "type": "string",
+            "description": "Managed saved-account selection; credentials are copied into this workspace's own SecretStorage entry."
+        },
+        "accountLabel": {
+            "type": "string",
+            "description": "Display name of the saved platform account."
+        },
         "preferredLanguage": {
             "type": ["string", "number"],
             "description": "Platform language id chosen in the panel; overrides the submission picker."

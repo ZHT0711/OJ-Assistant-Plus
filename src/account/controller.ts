@@ -6,8 +6,10 @@ import { AccountSession, accounts, isAuthenticationError } from './session';
 import { matchLanguages, sourceExtension } from './language';
 import { safeMessage } from './credentials';
 import { submissionHistory } from './history';
-import { recordOf, SubmissionJob, SubmissionRecord, SubmissionTracker, WaitStopped } from './submissions';
+import { recordOf, submissionAccountKey, SubmissionJob, SubmissionRecord, SubmissionTracker, WaitStopped } from './submissions';
 import { registerAccountTesting } from './testing';
+import { adapterFor } from '../backend/platforms';
+import { SubmissionRejected } from '../backend/submissionResponse';
 
 export const submissions = new SubmissionTracker();
 let context: vscode.ExtensionContext;
@@ -38,6 +40,15 @@ function persist(job: SubmissionJob): void {
 function seconds(uri: vscode.Uri, name: string, fallback: number): number {
     const value = Number(vscode.workspace.getConfiguration('ojassist.account', uri).get(name, fallback));
     return Math.max(100, Math.min(600000, (Number.isFinite(value) ? value : fallback) * 1000));
+}
+async function showSubmissionDetails(record: SubmissionRecord): Promise<void> {
+    const content = [
+        `${record.backend} · ${record.contestId ? record.contestId + '.' : ''}${record.problemId} · ${record.verdict?.result || record.state}`,
+        `文件：${record.relativeFile}`, `提交时间：${record.createdAt}`,
+        ...(record.retryAt ? [`冷却结束：${new Date(record.retryAt).toLocaleString()}`] : []),
+        '', record.verdict?.details || record.message || '平台未返回详细评测信息。',
+    ].join('\n');
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument({ language: 'plaintext', content }), { preview: false });
 }
 async function selectLanguage(session: AccountSession, source: SourceFile): Promise<boolean> {
     const generation = session.generation;
@@ -78,8 +89,10 @@ async function poll(job: SubmissionJob, session: AccountSession): Promise<void> 
             output.appendLine(`[${new Date().toLocaleString()}] ${job.backend} ${job.problemId}: ${verdict.result}${job.recordId ? ' · 记录 ' + job.recordId : ''}`);
             if (verdict.details) { output.appendLine(verdict.details); }
             const perf = [verdict.time && verdict.time !== '-' ? verdict.time : '', verdict.memory && verdict.memory !== '-' ? verdict.memory : ''].filter(Boolean).join(' / ');
-            void vscode.window.showInformationMessage(`${job.problemId}：${verdict.result}${perf ? ' · ' + perf : ''}`, '查看提交历史').then(choice => {
-                if (choice) { void vscode.commands.executeCommand('ojassist.submissionHistory'); }
+            if (verdict.result !== 'Accepted') { output.show(true); }
+            void vscode.window.showInformationMessage(`${job.problemId}：${verdict.result}${perf ? ' · ' + perf : ''}`, '查看评测详情', '查看提交历史').then(choice => {
+                if (choice === '查看评测详情') { void showSubmissionDetails(recordOf(job)); }
+                if (choice === '查看提交历史') { void vscode.commands.executeCommand('ojassist.submissionHistory'); }
             });
             void vscode.commands.executeCommand('ojassist.recordAccountVerdict', recordOf(job));
             if (accounts.current?.key === job.sessionKey && accounts.current.server === server) { void vscode.commands.executeCommand('ojassist.refreshProblems'); }
@@ -87,7 +100,9 @@ async function poll(job: SubmissionJob, session: AccountSession): Promise<void> 
             if (session.key === job.sessionKey && session.server === server && isAuthenticationError(error)) { accounts.change(session, 'expired', '登录已过期，请重新登录后继续查询'); }
             const message = error instanceof WaitStopped ? `${error.message}；线上评测可能仍在进行，可继续查询本次记录。` : `获取评测暂时失败：${safeMessage(error, credentials)}。可继续查询本次记录。`;
             job.message = message; persist(job);
-            void vscode.window.showWarningMessage(message, '继续查询', '重新登录').then(action => {
+            output.appendLine(message);
+            void vscode.window.showWarningMessage(message, '查看评测详情', '继续查询', '重新登录').then(action => {
+                if (action === '查看评测详情') { void showSubmissionDetails(recordOf(job)); }
                 if (action === '继续查询') { void vscode.commands.executeCommand('ojassist.resumeJudgement', job.localId); }
                 if (action === '重新登录') { void vscode.commands.executeCommand('ojassist.webLogin', session.root); }
             });
@@ -98,14 +113,25 @@ async function poll(job: SubmissionJob, session: AccountSession): Promise<void> 
 export async function submitAccount(editor: vscode.TextEditor): Promise<SubmissionRecord | undefined> {
     let job: SubmissionJob | undefined;
     let session: AccountSession | undefined;
+    let source: SourceFile | undefined;
+    let webUrl: string | undefined;
     try {
         session = accounts.assertReady(editor.document.uri);
         if (accounts.current !== session) { accounts.select(session.root); }
         // Capture the server, config and code before opening a language picker.
         const server = session.server!;
         const generation = session.generation;
-        const source = parseSourceFile(editor.document.uri, session.config!, editor.document.getText());
+        source = parseSourceFile(editor.document.uri, session.config!, editor.document.getText()) || undefined;
         if (!source) { throw new Error('当前代码文件不符合账号题目的命名规则'); }
+        const uploadSource = source;
+        webUrl = adapterFor(session.config!.backend)?.webUrl(source);
+        if (webUrl && session.config!.baseUrl) {
+            const page = new URL(webUrl);
+            webUrl = session.config!.baseUrl.replace(/\/+$/, '') + page.pathname + page.search;
+        }
+        const rateLimitKey = submissionAccountKey(session.config!.backend, (server as any).baseUrl || session.config!.baseUrl, session.username || '');
+        await submissionHistory.flush(session.root.fsPath);
+        submissions.restore((await submissionHistory.list(session.root.fsPath)).filter(record => record.sessionKey === session!.key), rateLimitKey);
         const scope = JSON.stringify([session.key, source.contestId, source.id]);
         const existing = submissions.find(scope);
         if (existing) {
@@ -119,14 +145,14 @@ export async function submitAccount(editor: vscode.TextEditor): Promise<Submissi
             return recordOf(existing);
         }
         job = submissions.create({ scope, sessionKey: session.key, backend: session.config!.backend, account: session.username || '', problemId: source.id,
-            contestId: source.contestId, relativeFile: path.relative(session.root.fsPath, source.uri.fsPath) });
+            contestId: source.contestId, relativeFile: path.relative(session.root.fsPath, source.uri.fsPath), rateLimitKey });
         rememberRuntime(job, session.root, server, session.config!.credentials); persist(job);
         if (!await selectLanguage(session, source)) { job.state = 'failed'; job.message = '选择语言时已取消，未上传代码'; persist(job); return recordOf(job); }
         if (session.generation !== generation || session.server !== server || session.state !== 'ready') { throw new Error('账号状态已变化，请确认当前账号后重新提交'); }
         job.language = source.languageOverride;
         await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `${job.backend} · ${source.id} · 上传代码`, cancellable: true }, async (progress, token) => {
             progress.report({ message: '正在发送本次代码…' });
-            await submissions.send(job!, () => server.submit(source), seconds(session!.root, 'uploadTimeout', 30), token, () => persist(job!));
+            await submissions.send(job!, () => server.submit(uploadSource), seconds(session!.root, 'uploadTimeout', 30), token, () => persist(job!));
         });
         await poll(job, session);
         return recordOf(job);
@@ -135,7 +161,16 @@ export async function submitAccount(editor: vscode.TextEditor): Promise<Submissi
         if (session && job && session.key === job.sessionKey && session.server === servers.get(job.localId) && isAuthenticationError(error)) { accounts.change(session, 'expired', '登录已过期，请重新登录'); }
         const message = safeMessage(error, job ? redactions.get(job.localId) : session?.config?.credentials);
         if (job) { job.message = job.state === 'unknown' ? '上传结果未确认，请先查看原站提交记录；上传不会自动重试。' : message; persist(job); }
-        vscode.window.showWarningMessage(job?.state === 'unknown' ? job.message! : message);
+        output.appendLine(message);
+        const actions = error instanceof SubmissionRejected && webUrl ? ['复制代码并打开原站', '查看错误详情'] : ['查看错误详情'];
+        void vscode.window.showWarningMessage(job?.state === 'unknown' ? `${job.message}\n${message}` : message, ...actions).then(async choice => {
+            if (choice === '复制代码并打开原站' && source && webUrl) {
+                await vscode.env.clipboard.writeText(source.code);
+                const opened = await vscode.env.openExternal(vscode.Uri.parse(webUrl));
+                void vscode.window.showInformationMessage(opened ? '本次源码已复制，请在原站完成验证并手动提交。' : '本次源码已复制，浏览器未能打开，请手动访问原站。');
+            }
+            if (choice === '查看错误详情') { await vscode.window.showTextDocument(await vscode.workspace.openTextDocument({ language: 'plaintext', content: message }), { preview: false }); }
+        }).then(undefined, error => { void vscode.window.showWarningMessage(safeMessage(error, session?.config?.credentials)); });
         return job ? recordOf(job) : undefined;
     }
 }
@@ -168,12 +203,12 @@ async function resume(id?: string): Promise<void> {
         await submissionHistory.flush(session.root.fsPath);
         const record = (await submissionHistory.list(session.root.fsPath)).find(r => r.localId === id);
         if (!record || record.sessionKey !== session.key) { throw new Error('该记录不属于当前账号工作区'); }
-        job = { ...record, state: 'paused' };
-        submissions.jobs.set(id, job); roots.set(id, session.root);
+        submissions.restore([record]);
+        job = submissions.jobs.get(id)!; roots.set(id, session.root);
     }
     if (!roots.has(id)) { roots.set(id, session.root); }
     if (roots.get(id)?.toString() !== session.root.toString() || job.sessionKey !== session.key) { throw new Error('请先切换到原提交的平台和账号'); }
-    if (job.state === 'completed') { vscode.window.showInformationMessage(job.verdict?.result || '评测已完成'); return; }
+    if (job.state === 'completed' || job.state === 'failed') { vscode.window.showInformationMessage(job.verdict?.result || job.message || '本次提交已结束'); return; }
     if (!job.resolver || servers.get(id) !== session.server) {
         if (!job.recordId || !session.server.resumeSubmission) { throw new Error('该平台尚无可恢复的独立提交编号，请在原站查看记录；本命令不会重新上传代码'); }
         const file = path.resolve(session.root.fsPath, job.relativeFile);
@@ -209,8 +244,10 @@ export function registerAccountCommands(extensionContext: vscode.ExtensionContex
         if (action === '查看提交历史') { await vscode.commands.executeCommand('ojassist.submissionHistory'); }
     });
     register('ojassist.selectAccountWorkspace', async () => {
-        const picked = await vscode.window.showWorkspaceFolderPick({ placeHolder: '选择账号题库使用的工作区文件夹' });
-        if (picked) { accounts.select(picked.uri); if (accounts.get(picked.uri).state === 'unconfigured') { await accounts.load(picked.uri); } }
+        const picked = await vscode.window.showQuickPick(accounts.roots.map(root => ({
+            label: path.basename(root.fsPath), description: accounts.get(root).config?.backend || '未配置', detail: root.fsPath, root,
+        })), { placeHolder: '选择刷题区（包含子文件夹中独立初始化的刷题区）' });
+        if (picked) { accounts.select(picked.root); if (accounts.get(picked.root).state === 'unconfigured') { await accounts.load(picked.root); } }
     });
     register('ojassist.resumeJudgement', id => resume(id));
     register('ojassist.submitAccountSource', async (source: vscode.Uri) => {
@@ -235,7 +272,7 @@ export function registerAccountCommands(extensionContext: vscode.ExtensionContex
         if (!picked) { return; }
         const action = await vscode.window.showQuickPick(['查看详情', '打开代码', '继续查询'], { placeHolder: picked.label });
         if (action === '继续查询') { await resume(picked.record.localId); }
-        if (action === '查看详情') { await vscode.window.showTextDocument(await vscode.workspace.openTextDocument({ language: 'json', content: JSON.stringify(picked.record, null, 2) })); }
+        if (action === '查看详情') { await showSubmissionDetails(picked.record); }
         if (action === '打开代码') {
             const file = path.resolve(session.root.fsPath, picked.record.relativeFile);
             const relative = path.relative(session.root.fsPath, file);

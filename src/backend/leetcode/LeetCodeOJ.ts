@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
+import { SubmissionRejected, submissionRequest } from '../submissionResponse';
 import axiosCookieJarSupport from '@3846masa/axios-cookiejar-support';
 import { stringify as qstringify } from 'qs';
 import { CookieJar, Cookie } from 'tough-cookie';
@@ -216,7 +217,7 @@ export class LeetCodeOJ implements OJ {
      * HTTP 200 as an HTML page) and transparently solves it by executing the
      * bundled script in a VM sandbox, then replaying the original request.
      */
-    private async request(method: 'get' | 'post', url: string, options: AxiosRequestConfig): Promise<any> {
+    private async request(method: 'get' | 'post', url: string, options: AxiosRequestConfig, replayChallenge = true): Promise<any> {
         for (let attempt = 0; attempt < 4; attempt++) {
             const config: AxiosRequestConfig = Object.assign({}, this.axiosConfig, options, {
                 headers: Object.assign({}, this.axiosConfig.headers, options.headers),
@@ -224,6 +225,7 @@ export class LeetCodeOJ implements OJ {
             const response = await axios.request(Object.assign({ method, url }, config));
 
             if (typeof response.data === 'string' && isWafChallenge(response.data)) {
+                if (!replayChallenge) { throw new SubmissionRejected('captcha', '平台要求安全验证，请复制代码并打开原站，在浏览器中完成验证和提交。'); }
                 const host = new URL(url).host;
                 const cookies = solveWafChallenge(response.data, host);
                 for (const pair of cookies) {
@@ -374,7 +376,7 @@ export class LeetCodeOJ implements OJ {
         const lang = String(sourceFile.languageOverride ?? (this.config.languages ?? defaultLanguages)[sourceFile.sourceType] ?? sourceFile.sourceType);
 
         const csrf = this.cookieValue('csrftoken');
-        const response = await this.request('post', `${this.baseUrl}/problems/${slug}/submit/`, {
+        const response = await submissionRequest(this.request('post', `${this.baseUrl}/problems/${slug}/submit/`, {
             data: {
                 lang,
                 typed_code: sourceFile.code,
@@ -387,7 +389,7 @@ export class LeetCodeOJ implements OJ {
                 'Referer': `${this.baseUrl}/problems/${slug}/`,
             }, csrf ? { 'x-csrftoken': csrf } : {}),
             validateStatus: (s: number) => s < 500,
-        });
+        }, false));
 
         if (response.status === 403) {
             throw new Error('OJ-Assistant: leetcode submit rejected (403 User is not authenticated) - ' +

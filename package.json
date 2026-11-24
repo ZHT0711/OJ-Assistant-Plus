@@ -140,7 +140,8 @@
 			},
 			{
 				"command": "ojassist.initWorkspace",
-				"title": "OJ-Assistant: 初始化刷题工作区 (GUI)"
+				"title": "在此文件夹初始化刷题区",
+				"category": "OJ Assistant"
 			},
 			{
 				"command": "ojassist.searchProblems",
@@ -260,6 +261,13 @@
 			]
 		},
 		"menus": {
+			"explorer/context": [
+				{
+					"command": "ojassist.initWorkspace",
+					"when": "explorerResourceIsFolder && resourceScheme == file",
+					"group": "ojassistant@1"
+				}
+			],
 			"view/title": [
 				{
 					"command": "ojassist.searchProblems",
@@ -451,8 +459,8 @@
 		"pretest": "yarn run test-compile && yarn run lint",
 		"lint": "eslint src --ext ts",
 		"test": "node ./out/test/runTest.js",
-		"test:account": "npm run test-compile && mocha --ui tdd out/test/suite/account.test.js out/test/suite/csecgVerdict.test.js",
-		"test:core": "npm run test-compile && mocha --ui tdd out/test/suite/platforms.test.js out/test/suite/account.test.js out/test/suite/practice.test.js out/test/suite/practiceLanguages.test.js out/test/suite/csecgVerdict.test.js"
+		"test:account": "npm run test-compile && mocha --ui tdd out/test/suite/account.test.js out/test/suite/accountRoots.test.js out/test/suite/accountLibrary.test.js out/test/suite/csecgVerdict.test.js",
+		"test:core": "npm run test-compile && mocha --ui tdd out/test/suite/platforms.test.js out/test/suite/account.test.js out/test/suite/accountRoots.test.js out/test/suite/accountLibrary.test.js out/test/suite/practice.test.js out/test/suite/practiceLanguages.test.js out/test/suite/csecgVerdict.test.js"
 	},
 	"devDependencies": {
 		"@types/glob": "^7.1.3",

@@ -43,6 +43,10 @@ export function parseCsecgVerdict(content: string, ret: string): CsecgVerdict {
         : content;
     const details = readable.replace(/&nbsp;|&#160;/gi, ' ').replace(/&lt;/gi, '<')
         .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+        .replace(/&apos;/gi, "'").replace(/&#(x[0-9a-f]+|\d+);/gi, (entity, value: string) => {
+            const code = value[0].toLowerCase() === 'x' ? parseInt(value.slice(1), 16) : Number(value);
+            return code <= 0x10ffff ? String.fromCodePoint(code) : entity;
+        })
         .replace(/&amp;/gi, '&').replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').trim();
     const t = details.replace(/[ \t]+/g, ' ');
 
@@ -57,13 +61,25 @@ export function parseCsecgVerdict(content: string, ret: string): CsecgVerdict {
     if (/运行(?:时)?(?:错误|失败)|Runtime Error|Segmentation fault/i.test(t)) {
         return { status: 'Runtime Error', details };
     }
-    if (/答案错误|Wrong Answer/i.test(t)) { return { status: 'Wrong Answer', details }; }
+    if (/答案错误|输出错误|结果错误|Wrong Answer/i.test(t)) { return { status: 'Wrong Answer', details }; }
+    if (/格式错误|Presentation Error/i.test(t)) { return { status: 'Presentation Error', details }; }
     if (/时间超限|运行超时|Time Limit Exceeded/i.test(t)) {
         return { status: 'Time Limit Exceeded', details };
     }
     // A generic "Memory" label is commonly a usage statistic, not the verdict.
     if (/内存(?:超限|超出限制|限制超出)|Memory Limit Exceeded|\bMLE\b/i.test(t)) {
         return { status: 'Memory Limit Exceeded', details };
+    }
+    // CourseGrading reports individual cases instead of an overall Accepted label.
+    // Require the complete declared set so a partial poll cannot look accepted.
+    const total = /共有测试数据\s*[:：]\s*(\d+)/.exec(t);
+    const passed = new Set<string>();
+    const cases = /测试数据\s*(\d+)\s*[:：]?\s*完全正确/g;
+    let match: RegExpExecArray | null;
+    while ((match = cases.exec(t))) { passed.add(String(Number(match[1]))); }
+    if (total && Number(total[1]) > 0 && passed.size === Number(total[1]) &&
+        Array.from(passed).every(id => Number(id) >= 1 && Number(id) <= Number(total[1]))) {
+        return { status: 'Accepted', details };
     }
     if (/答案正确|全部通过|评测通过|(?:^|\n)通过(?:\s|$)|\bAccepted\b/i.test(t) && !/未通过/.test(t)) {
         return { status: 'Accepted', details };

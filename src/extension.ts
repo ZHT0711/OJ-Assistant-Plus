@@ -41,10 +41,26 @@ export function activate(context: vscode.ExtensionContext) {
 		if (session.state !== 'ready') { vscode.window.showWarningMessage(session.message || '账号未就绪'); }
 		return session.state;
 	}));
-	for (const folder of vscode.workspace.workspaceFolders || []) { void accounts.load(folder.uri); }
+	void accounts.discover().catch(error => console.error('OJ Assistant: discover practice folders failed', error));
+	const configs = vscode.workspace.createFileSystemWatcher('**/.ojassistconfig.json', false, true, false);
+	context.subscriptions.push(configs,
+		configs.onDidCreate(uri => {
+			if (!vscode.workspace.getWorkspaceFolder(uri)) { return; }
+			const root = vscode.Uri.joinPath(uri, '..');
+			// An explicit initialization/reload may already have loaded this file.
+			// A delayed filesystem event must not restart that login.
+			if (accounts.get(root).state === 'unconfigured') { void accounts.load(root); }
+		}),
+		configs.onDidDelete(uri => {
+			const root = vscode.Uri.joinPath(uri, '..');
+			accounts.remove(root);
+			const editor = vscode.window.activeTextEditor;
+			const session = editor && accounts.forUri(editor.document.uri);
+			if (session) { accounts.select(session.root); }
+		}));
 	context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(event => {
-		for (const folder of event.removed) { accounts.remove(folder.uri); }
-		for (const folder of event.added) { void accounts.load(folder.uri); }
+		accounts.removeOutsideWorkspace();
+		if (event.added.length) { void accounts.discover().catch(error => console.error('OJ Assistant: discover practice folders failed', error)); }
 	}));
 	new DebuggerTimer().hook();
 	if (context.extensionMode === vscode.ExtensionMode.Test) { return { accounts, submissions, backends }; }

@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
+import { submissionRequest } from '../submissionResponse';
 import axiosCookieJarSupport from '@3846masa/axios-cookiejar-support';
 import { stringify as qstringify } from 'qs';
 import { CookieJar, Cookie } from 'tough-cookie';
@@ -497,7 +498,7 @@ export class CSECG implements OJ {
         }
 
         const lang = String(sourceFile.languageOverride ?? (this.config.languages ?? defaultLanguages)[sourceFile.sourceType] ?? 'c++');
-        const response = await axios.post(
+        const response = await submissionRequest(axios.post(
             this.baseUrl + '/assignment/showProcessMsg.jsp',
             qstringify({
                 doSubmit: 'true',
@@ -516,7 +517,7 @@ export class CSECG implements OJ {
                 }),
                 validateStatus: (s: number) => s < 500,
             })
-        );
+        ));
         if (response.status >= 400) {
             throw new Error('OJ-Assistant: csecg submit failed (HTTP ' + response.status + ').');
         }

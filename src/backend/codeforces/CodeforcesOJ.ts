@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
+import { checkSubmissionResponse, submissionRequest } from '../submissionResponse';
 import { stringify as qstringify } from 'qs';
 import axiosCookieJarSupport from '@3846masa/axios-cookiejar-support';
 import * as katex from 'katex';
@@ -95,7 +96,8 @@ export class CodeforcesOJ implements OJ {
     async submit(sourceFile: SourceFile): Promise<Function> {
         if(sourceFile.contestId) {
             let response = await axios.get(this.baseUrl + `/contest/${sourceFile.contestId}/submit`, this.axiosConfig);
-            await axios.post(this.baseUrl + `/contest/${sourceFile.contestId}/submit`, {
+            checkSubmissionResponse(response);
+            await submissionRequest(axios.post(this.baseUrl + `/contest/${sourceFile.contestId}/submit`, {
                 ...{
                     submittedProblemCode: sourceFile.id,
                     programTypeId: (sourceFile.languageOverride as number) ?? getLanguageId(sourceFile.sourceType),
@@ -106,10 +108,11 @@ export class CodeforcesOJ implements OJ {
                     tabSize: 4,
                 },
                 ...this.extractToken(response.data)
-            }, this.axiosConfig);
+            }, this.axiosConfig));
         } else {
             let response = await axios.get(this.baseUrl + '/problemset/submit', this.axiosConfig);
-            await axios.post(this.baseUrl + '/problemset/submit', {
+            checkSubmissionResponse(response);
+            await submissionRequest(axios.post(this.baseUrl + '/problemset/submit', {
                 ...{
                     submittedProblemCode: sourceFile.id,
                     language: (sourceFile.languageOverride as number) ?? getLanguageId(sourceFile.sourceType),
@@ -117,7 +120,7 @@ export class CodeforcesOJ implements OJ {
                     action: 'submitSolutionFormSubmitted',
                 },
                 ...this.extractToken(response.data)
-            }, this.axiosConfig);
+            }, this.axiosConfig));
         }
         
         let resolveSubmitResult = (data: string, resolve: (value: unknown) => void) => {

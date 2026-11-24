@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
+import { checkSubmissionResponse, submissionRequest } from '../submissionResponse';
 import axiosCookieJarSupport from '@3846masa/axios-cookiejar-support';
 import { CookieJar, Cookie } from 'tough-cookie';
 import * as cheerio from 'cheerio';
@@ -406,9 +407,10 @@ export class NEUOJ implements OJ {
         const $ = page.$;
 
         const csrf = page.csrf ?? this.csrfToken;
+        if (page.submitForm) { checkSubmissionResponse({ data: $(page.submitForm).toString() }); }
         const body = this.buildSubmitBody(sourceFile, page);
 
-        const response = await axios.post(
+        const response = await submissionRequest(axios.post(
             this.baseUrl + '/submissions/create',
             body,
             Object.assign({}, this.axiosConfig, {
@@ -420,7 +422,7 @@ export class NEUOJ implements OJ {
                     'X-Requested-With': 'XMLHttpRequest',
                 }),
             })
-        );
+        ));
 
         const submissionId = this.extractSubmissionId(response.data);
         if (submissionId === undefined) {

@@ -2,13 +2,22 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { SubmissionRecord } from './submissions';
 import { writeJson } from './credentials';
+import { parseCsecgVerdict } from '../backend/csecg/verdict';
 
 export class SubmissionHistory {
     private writing = new Map<string, Promise<void>>();
     async flush(root: string): Promise<void> { await this.writing.get(root); }
     async list(root: string): Promise<SubmissionRecord[]> {
         const file = path.join(root, '.oj-assistant', 'accounts', 'history.json');
-        try { const value = JSON.parse(await fs.readFile(file, 'utf8')); return Array.isArray(value) ? value : []; }
+        try {
+            const value = JSON.parse(await fs.readFile(file, 'utf8'));
+            if (!Array.isArray(value)) { return []; }
+            return value.map((record: SubmissionRecord) => {
+                if (record.backend !== 'csecg' || record.verdict?.result !== '评测结果未识别' || !record.verdict.details) { return record; }
+                const parsed = parseCsecgVerdict(record.verdict.details, '0');
+                return { ...record, verdict: { ...record.verdict, result: parsed.status, details: parsed.details } };
+            });
+        }
         catch (error) { if (error.code === 'ENOENT') { return []; } throw new Error('提交历史文件无法读取，原文件已保留'); }
     }
     save(root: string, record: SubmissionRecord): Promise<void> {
